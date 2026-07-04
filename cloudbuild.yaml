@@ -1,0 +1,55 @@
+steps:
+  # Step 1: FastAPI API 서버 Docker 이미지 빌드 (캐시 활용)
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '--cache-from'
+      - 'gcr.io/$PROJECT_ID/sentinel-api:latest'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/sentinel-api:$SHORT_SHA'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/sentinel-api:latest'
+      - './api'
+    id: 'build-api'
+    waitFor: ['-']
+
+  # Step 2: API 서버 이미지 푸시
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', '--all-tags', 'gcr.io/$PROJECT_ID/sentinel-api']
+    id: 'push-api'
+    waitFor: ['build-api']
+
+  # Step 3: FastAPI Cloud Run 배포 (COURT_API_KEY 환경변수 처리)
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'gcloud'
+    args:
+      - 'run'
+      - 'deploy'
+      - 'sentinel-api'
+      - '--image'
+      - 'gcr.io/$PROJECT_ID/sentinel-api:$SHORT_SHA'
+      - '--region'
+      - 'asia-northeast3'
+      - '--platform'
+      - 'managed'
+      - '--allow-unauthenticated'
+      - '--set-env-vars'
+      - 'PORT=8000,LOG_LEVEL=INFO,CACHE_TTL_SECONDS=300,ALLOWED_ORIGINS=https://your-project.web.app,DB_PATH=/tmp/auction_data.db,COURT_API_KEY='
+      - '--min-instances'
+      - '0'
+      - '--max-instances'
+      - '5'
+      - '--memory'
+      - '512Mi'
+      - '--cpu'
+      - '1'
+      - '--concurrency'
+      - '80'
+    id: 'deploy-api'
+    waitFor: ['push-api']
+
+timeout: '1800s'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: 'E2_HIGHCPU_8'

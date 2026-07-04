@@ -1,0 +1,26 @@
+runtime: nodejs18
+
+# 자동 확장 설정
+automatic_scaling:
+  min_instances: 1
+  max_instances: 10
+  target_cpu_utilization: 0.65
+
+# 환경 변수
+env_variables:
+  NODE_ENV: 'production'
+  API_BASE_URL: 'https://api.courtauction.go.kr'
+
+# 리소스 설정
+resources:
+  cpu: 1
+  memory_gb: 0.5
+  disk_size_gb: 10
+
+# 건강 확인
+health_check:
+  enable_health_check: True
+  check_interval_sec: 30
+  timeout_sec: 4
+  unhealthy_threshold: 2
+  healthy_threshold: 2

@@ -118,3 +118,8 @@ venv/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# OMC / tooling artifacts
+.omc/
+.playwright-mcp/
+.claude/
