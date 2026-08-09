@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Search, SlidersHorizontal, X } from 'lucide-react'
 import { tradeApi } from '../services/tradeApi'
-import { SidoRegion, TradeSearchParams, SORT_LABELS } from '../types/trade'
+import { SidoRegion, TradeSearchParams, SORT_LABELS, PROPERTY_LABELS } from '../types/trade'
 
 interface Props {
   value: TradeSearchParams
@@ -90,13 +90,13 @@ const TradeFilters = ({ value, onChange }: Props) => {
           </button>
         ))}
         <span className="w-px h-5 bg-gray-200 dark:bg-gray-600 mx-1" />
-        {(['ALL', 'APARTMENT', 'OFFICETEL'] as const).map((t) => (
+        {(['ALL', 'APARTMENT', 'OFFICETEL', 'COMMERCIAL', 'LAND'] as const).map((t) => (
           <button
             key={t}
             onClick={() => set({ propertyType: t })}
             className={chip((value.propertyType || 'ALL') === t)}
           >
-            {t === 'ALL' ? '전체' : t === 'APARTMENT' ? '아파트' : '오피스텔'}
+            {t === 'ALL' ? '전체' : PROPERTY_LABELS[t]}
           </button>
         ))}
 

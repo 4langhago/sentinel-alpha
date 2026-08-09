@@ -1,6 +1,13 @@
 // 국토교통부 실거래가 기반 도메인 타입
 
-export type PropertyType = 'APARTMENT' | 'OFFICETEL'
+export type PropertyType = 'APARTMENT' | 'OFFICETEL' | 'COMMERCIAL' | 'LAND'
+
+export const PROPERTY_LABELS: Record<PropertyType, string> = {
+  APARTMENT: '아파트',
+  OFFICETEL: '오피스텔',
+  COMMERCIAL: '상가·사무실',
+  LAND: '토지',
+}
 export type DealType = 'TRADE' | 'RENT'
 export type RentType = 'JEONSE' | 'MONTHLY' | null
 
@@ -21,6 +28,12 @@ export interface TradeItem {
   road_name?: string
   /** '중개거래' | '직거래' (아파트 매매 상세자료에만 존재) */
   dealing_type?: string
+  /** 상가는 건물주용도(제2종근린생활시설 등), 토지는 지목 */
+  use_type?: string
+  /** 지분 거래 여부. 면적당 단가가 왜곡되므로 통계에서 제외된다. */
+  share_deal?: boolean
+  /** 상가의 대지면적 (㎡) */
+  land_area?: number
   property_type: PropertyType
   deal_type: DealType
   rent_type: RentType

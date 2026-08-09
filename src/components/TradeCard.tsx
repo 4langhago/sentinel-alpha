@@ -1,16 +1,11 @@
 import { Link } from 'react-router-dom'
 import { Building2, MapPin, Calendar, Layers, Ruler } from 'lucide-react'
-import { TradeItem, formatPrice, toPyeong } from '../types/trade'
+import { TradeItem, formatPrice, toPyeong, PROPERTY_LABELS } from '../types/trade'
 
 interface Props {
   item: TradeItem
   /** 같은 지역 중위 평당가. 주어지면 상대적으로 싼지/비싼지 표시한다. */
   medianPerPyeong?: number
-}
-
-const PROPERTY_LABEL: Record<string, string> = {
-  APARTMENT: '아파트',
-  OFFICETEL: '오피스텔',
 }
 
 const TradeCard = ({ item, medianPerPyeong }: Props) => {
@@ -40,7 +35,7 @@ const TradeCard = ({ item, medianPerPyeong }: Props) => {
         </div>
         <span className="shrink-0 inline-flex items-center gap-1 text-[11px] font-semibold bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-full px-2 py-1">
           <Building2 className="w-3 h-3" />
-          {PROPERTY_LABEL[item.property_type] || item.property_type}
+          {PROPERTY_LABELS[item.property_type] || item.property_type}
         </span>
       </div>
 
@@ -62,30 +57,43 @@ const TradeCard = ({ item, medianPerPyeong }: Props) => {
           <Ruler className="w-3.5 h-3.5" />
           {item.area}㎡ ({pyeong}평)
         </span>
-        <span className="inline-flex items-center gap-1">
-          <Layers className="w-3.5 h-3.5" />
-          {item.floor}층
-        </span>
+        {/* 토지는 층 개념이 없다 */}
+        {item.property_type !== 'LAND' && item.floor > 0 && (
+          <span className="inline-flex items-center gap-1">
+            <Layers className="w-3.5 h-3.5" />
+            {item.floor}층
+          </span>
+        )}
         <span className="inline-flex items-center gap-1">
           <Calendar className="w-3.5 h-3.5" />
           {item.deal_date}
         </span>
         {item.build_year > 0 && <span>{item.build_year}년 준공</span>}
+        {item.use_type && (
+          <span className="inline-block bg-gray-100 dark:bg-gray-700 rounded px-1.5 py-0.5 text-[11px]">
+            {item.use_type}
+          </span>
+        )}
         {item.dealing_type && (
           <span className="inline-block bg-gray-100 dark:bg-gray-700 rounded px-1.5 py-0.5 text-[11px]">
             {item.dealing_type}
+          </span>
+        )}
+        {item.share_deal && (
+          <span className="inline-block bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 rounded px-1.5 py-0.5 text-[11px]">
+            지분거래
           </span>
         )}
       </div>
 
       <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-700 flex items-center justify-between">
         <span className="text-xs text-gray-500 dark:text-gray-400">
-          평당{' '}
+          {item.property_type === 'LAND' ? '평당(대지)' : '평당'}{' '}
           <span className="font-semibold text-gray-700 dark:text-gray-200">
             {Math.round(item.price_per_pyeong / 10000).toLocaleString()}만원
           </span>
         </span>
-        {diffPct !== null && (
+        {diffPct !== null && !item.share_deal && (
           <span
             className={`text-xs font-semibold ${
               diffPct > 0

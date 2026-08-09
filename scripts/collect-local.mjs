@@ -58,10 +58,14 @@ const main = async () => {
   const maxCalls = Number(arg('max', 700))
   const sidoArg = arg('sido', '')
   const sidoFilter = sidoArg ? sidoArg.split(',').map((s) => s.trim()) : undefined
+  // --services APT_TRADE,NRG_TRADE 처럼 종목을 좁힐 수 있다 (호출 한도 절약용)
+  const servicesArg = arg('services', '')
+  const serviceIds = servicesArg ? servicesArg.split(',').map((s) => s.trim().toUpperCase()) : undefined
 
   console.log(
     `수집 시작 — 최근 ${months}개월, 최대 ${maxCalls}회 호출` +
-      (sidoFilter ? `, 지역: ${sidoFilter.join(', ')}` : ', 전국')
+      (sidoFilter ? `, 지역: ${sidoFilter.join(', ')}` : ', 전국') +
+      (serviceIds ? `, 종목: ${serviceIds.join(', ')}` : '')
   )
 
   const { payload, errors, fatal } = await collectTrades({
@@ -69,6 +73,7 @@ const main = async () => {
     months,
     maxCalls,
     sidoFilter,
+    serviceIds,
     onProgress: (m) => console.log('  ', m),
   })
 
@@ -104,7 +109,7 @@ const main = async () => {
   // (--sido 로 범위를 좁혔을 때는 기본으로 병합, --replace 로 전체 교체 가능)
   const replace = args.includes('--replace')
   let finalPayload = payload
-  if (!replace && sidoFilter) {
+  if (!replace && (sidoFilter || serviceIds)) {
     const existing = await readAllItems()
     if (existing.length > 0) {
       const merged = mergeItems(existing, payload.items)

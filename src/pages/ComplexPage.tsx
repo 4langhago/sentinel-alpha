@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { ArrowLeft, Building2, MapPin, Calendar, Heart, TrendingUp } from 'lucide-react'
 import { tradeApi } from '../services/tradeApi'
-import { ComplexDetail, formatPrice, toPyeong, TrendPoint } from '../types/trade'
+import { ComplexDetail, formatPrice, toPyeong, TrendPoint, PROPERTY_LABELS } from '../types/trade'
 import PriceTrendChart from '../components/PriceTrendChart'
 import DataSourceBadge from '../components/DataSourceBadge'
 import { useAuth } from '../contexts/AuthContext'
@@ -122,7 +122,7 @@ const ComplexPage = () => {
               )}
               <span className="inline-flex items-center gap-1">
                 <Building2 className="w-4 h-4" />
-                {detail.property_type === 'APARTMENT' ? '아파트' : '오피스텔'}
+                {PROPERTY_LABELS[detail.property_type] || detail.property_type}
               </span>
             </p>
           </div>

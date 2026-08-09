@@ -31,7 +31,26 @@ export const SERVICES = {
     dealType: 'TRADE',
     propertyType: 'OFFICETEL',
   },
+  // 상가·사무실. 단지명이 없고 면적이 건물면적/대지면적으로 나뉜다.
+  NRG_TRADE: {
+    id: 'NRG_TRADE',
+    label: '상업업무용 매매',
+    path: 'RTMSDataSvcNrgTrade/getRTMSDataSvcNrgTrade',
+    dealType: 'TRADE',
+    propertyType: 'COMMERCIAL',
+  },
+  // 토지. 단지·건물 개념이 없고 거래면적(㎡)과 지목만 있다.
+  LAND_TRADE: {
+    id: 'LAND_TRADE',
+    label: '토지 매매',
+    path: 'RTMSDataSvcLandTrade/getRTMSDataSvcLandTrade',
+    dealType: 'TRADE',
+    propertyType: 'LAND',
+  },
 }
+
+/** 기본 수집 대상 */
+export const DEFAULT_SERVICE_IDS = ['APT_TRADE', 'APT_RENT', 'OFFI_TRADE', 'NRG_TRADE', 'LAND_TRADE']
 
 // XML 한 <item> 안에서 여러 후보 태그명 중 처음 발견되는 값을 꺼낸다.
 const pick = (body, ...names) => {
@@ -124,17 +143,31 @@ export async function fetchTrades({ serviceKey, service, lawdCd, dealYmd, numOfR
     }
 
     // 신버전(영문) / 구버전(한글) 태그를 모두 시도
-    const name = pick(b, 'aptNm', 'offiNm', 'aptName', '아파트', '단지')
     const umd = pick(b, 'umdNm', 'legalDong', '법정동')
     const jibun = pick(b, 'jibun', '지번')
     const sggCd = pick(b, 'sggCd', '지역코드') || lawdCd
+
+    // 상가·토지는 단지명이 없다. 같은 건물/필지를 묶을 수 있도록 "법정동 지번"을 이름으로 쓴다.
+    const rawName = pick(b, 'aptNm', 'offiNm', 'aptName', '아파트', '단지')
+    const name = rawName || [umd, jibun].filter(Boolean).join(' ') || '(이름 없음)'
+
+    // 용도: 상가는 건물주용도(제2종근린생활시설 등), 토지는 지목
+    const useType = pick(b, 'buildingUse', 'landUse', '건물주용도', '지목', '용도지역')
+    // 지분 거래는 일부 지분만 사고판 것이라 면적당 단가가 크게 왜곡된다.
+    const shareType = pick(b, 'shareDealingType', '거래구분')
+    const isShareDeal = /지분/.test(shareType)
 
     const year = pick(b, 'dealYear', '년')
     const month = pick(b, 'dealMonth', '월')
     const day = pick(b, 'dealDay', '일')
     if (!year || !month || !day) continue
 
-    const area = toFloat(pick(b, 'excluUseAr', 'excluUseArea', '전용면적'))
+    // 면적 기준이 종목마다 다르다.
+    //   아파트·오피스텔 → 전용면적 / 상가 → 건물면적 / 토지 → 거래면적
+    const area = toFloat(
+      pick(b, 'excluUseAr', 'excluUseArea', '전용면적', 'buildingAr', '건물면적', 'dealArea', '거래면적')
+    )
+    const landArea = toFloat(pick(b, 'plottageAr', '대지면적'))
     const floor = toInt(pick(b, 'floor', '층'))
     const buildYear = toInt(pick(b, 'buildYear', '건축년도'))
 
@@ -167,6 +200,12 @@ export async function fetchTrades({ serviceKey, service, lawdCd, dealYmd, numOfR
       road_name: roadNm,
       /** '중개거래' | '직거래' | '' (아파트 매매 상세자료에만 존재) */
       dealing_type: dealingGbn,
+      /** 상가는 건물주용도, 토지는 지목 */
+      use_type: useType,
+      /** 토지 지분 등 일부 지분만 거래된 건 (면적당 단가가 왜곡되므로 통계에서 제외) */
+      share_deal: isShareDeal,
+      /** 상가의 대지면적 (㎡). 없으면 0 */
+      land_area: landArea,
       property_type: service.propertyType,
       deal_type: service.dealType,
       // 전월세 중 월세가 0이면 전세

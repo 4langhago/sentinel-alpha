@@ -29,11 +29,14 @@ export function computeStats(items) {
   if (trades.length === 0) return { count: 0 }
 
   const prices = trades.map((it) => it.price)
-  const perPyeong = trades.map((it) => it.price_per_pyeong).filter((v) => v > 0)
+
+  // 지분 거래는 일부 지분만 사고판 것이라 면적당 단가가 실제 시세와 크게 다르다.
+  // 거래 목록에는 남기되 평당가 통계에서는 뺀다.
+  const forUnitPrice = trades.filter((it) => !it.share_deal && it.price_per_pyeong > 0)
+  const perPyeong = forUnitPrice.map((it) => it.price_per_pyeong)
 
   const byMonth = new Map()
-  for (const it of trades) {
-    if (it.price_per_pyeong <= 0) continue
+  for (const it of forUnitPrice) {
     const ym = it.deal_date.slice(0, 7)
     if (!byMonth.has(ym)) byMonth.set(ym, [])
     byMonth.get(ym).push(it.price_per_pyeong)
