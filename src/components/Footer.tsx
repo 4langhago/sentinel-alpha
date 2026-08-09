@@ -63,11 +63,11 @@ const Footer = () => {
 
         <div className="border-t border-gray-800 pt-6 flex flex-col md:flex-row justify-between items-center space-y-2 md:space-y-0">
           <p className="text-xs">
-            © {year} 경매 인사이트. All rights reserved.
+            © {year} 시세 인사이트. All rights reserved.
           </p>
           <p className="text-xs text-center">
             본 서비스는 정보 제공 목적이며, 투자 판단의 책임은 이용자에게 있습니다.
-            데이터 출처: 대한민국 법원 경매정보
+            데이터 출처: 국토교통부 실거래가 공개시스템
           </p>
         </div>
       </div>

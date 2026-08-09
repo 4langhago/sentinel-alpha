@@ -7,6 +7,7 @@
 import { User, DailyUsage, MembershipTier, FREE_DAILY_LIMIT, MEMBERSHIP_PLANS } from '../types/user'
 import { supabase, isSupabaseEnabled } from './supabase'
 
+// auction_ 접두사는 경매 검색 앱 시절의 잔재이나, 바꾸면 기존 사용자의 로그인 세션·사용량 기록이 초기화되므로 그대로 유지한다.
 const STORAGE_KEYS = {
   USER: 'auction_user',
   USERS_DB: 'auction_users_db',
