@@ -47,6 +47,12 @@ export interface TradeSearchResult {
   source: string
   isLive: boolean
   lastUpdate: string | null
+  /** 검색이 이루어진 범위: 시군구 전체 / 시도 최신 일부 / 전국 최신 일부 */
+  scope: 'sgg' | 'sido' | 'recent' | 'sample' | string
+  /** true면 해당 범위의 최신 일부만 검색한 결과 */
+  scopeTruncated: boolean
+  /** 검색 대상이 된 건수 */
+  scopeSize: number
 }
 
 export interface TrendPoint {

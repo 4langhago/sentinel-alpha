@@ -7,6 +7,7 @@
 // 옵션: ?months=1&max_calls=100&sido=서울  (테스트용으로 범위를 줄일 때)
 import { getStore } from '@netlify/blobs'
 import { collectTrades } from './lib/collect.mjs'
+import { buildShards } from './lib/storage.mjs'
 
 const json = (body, status = 200) =>
   new Response(JSON.stringify(body, null, 2), {
@@ -46,7 +47,15 @@ export default async (req) => {
     return json({ ok: false, detail: '수집 0건 — 기존 데이터를 유지합니다.', errors: errors.slice(0, 5) }, 502)
   }
 
-  await getStore('trades').setJSON('latest.json', payload)
+  // index.json은 나머지 샤드가 모두 올라간 뒤 마지막에 쓴다.
+  const store = getStore('trades')
+  const shards = buildShards(payload)
+  const indexShard = shards.find((s) => s.key === 'index.json')
+  for (const { key, value } of shards) {
+    if (key === 'index.json') continue
+    await store.setJSON(key, value)
+  }
+  await store.setJSON('index.json', indexShard.value)
 
   return json({
     ok: true,

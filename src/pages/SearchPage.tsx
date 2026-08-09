@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { SearchX, ChevronLeft, ChevronRight } from 'lucide-react'
+import { SearchX, ChevronLeft, ChevronRight, Info } from 'lucide-react'
 import TradeFilters from '../components/TradeFilters'
 import TradeCard from '../components/TradeCard'
 import DataSourceBadge from '../components/DataSourceBadge'
@@ -48,8 +48,20 @@ const SearchPage = () => {
     setSearchParams(sp)
   }
 
-  const { items, total, totalPages, isLive, lastUpdate, fetchedAt, loading, error, refresh } =
-    useTrades(filters)
+  const {
+    items,
+    total,
+    totalPages,
+    isLive,
+    lastUpdate,
+    fetchedAt,
+    loading,
+    error,
+    refresh,
+    scope,
+    scopeTruncated,
+    scopeSize,
+  } = useTrades(filters)
 
   const [stats, setStats] = useState<RegionStats | null>(null)
   useEffect(() => {
@@ -120,6 +132,18 @@ const SearchPage = () => {
           )}
         </p>
       </div>
+
+      {/* 시도/전국 범위는 최신 일부만 검색한다. 전체를 뒤진 것처럼 보이면 안 되므로 명시한다. */}
+      {isLive && scopeTruncated && (
+        <div className="bg-sky-50 dark:bg-sky-500/10 border border-sky-200 dark:border-sky-500/30 text-sky-800 dark:text-sky-300 rounded-xl px-4 py-3 text-sm flex items-start gap-2">
+          <Info className="w-4 h-4 mt-0.5 shrink-0" />
+          <span>
+            {scope === 'sido' ? '이 시도의' : '전국'} 최신{' '}
+            <strong>{scopeSize.toLocaleString()}건</strong> 안에서 검색한 결과입니다.
+            <strong> 시군구를 선택하면</strong> 해당 지역 전체 거래를 빠짐없이 검색합니다.
+          </span>
+        </div>
+      )}
 
       {error && (
         <div className="bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/30 text-rose-700 dark:text-rose-400 rounded-xl px-4 py-3 text-sm">

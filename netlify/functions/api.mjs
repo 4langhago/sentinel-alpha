@@ -1,9 +1,11 @@
 // 부동산 시세·실거래 API — Netlify Functions
-// 데이터 소스: refresh-trades.mjs(스케줄 함수)가 Netlify Blobs에 저장한 국토부 실거래가.
-// Blob이 없거나 7일 이상 오래되면 샘플 데이터로 폴백하며, 응답의 source로 항상 구분해 알린다.
-import { getStore } from '@netlify/blobs'
+//
+// 데이터는 lib/storage.mjs가 만든 샤드에서 읽는다. 조회 조건에 필요한 샤드만
+// 읽으므로 전체(49MB)를 파싱하지 않는다. 샤드가 없으면 샘플로 폴백하며,
+// 응답의 source/is_live로 항상 실데이터 여부를 알린다.
 import { generateTrades } from './lib/mockTrades.mjs'
 import { ALL_SGG, REGIONS } from './lib/regionCodes.mjs'
+import { readIndex, readShard, computeStats } from './lib/storage.mjs'
 
 const json = (body, status = 200) =>
   new Response(JSON.stringify(body), {
@@ -15,90 +17,72 @@ const json = (body, status = 200) =>
     },
   })
 
-const STALE_MS = 7 * 24 * 60 * 60 * 1000
-
-const isUsable = (payload) =>
-  payload &&
-  Array.isArray(payload.items) &&
-  payload.items.length > 0 &&
-  Date.now() - new Date(payload.last_update).getTime() <= STALE_MS
-
-// 배포 환경: 스케줄 함수가 저장한 Blobs 스냅샷
-async function fromBlobs() {
-  try {
-    const payload = await getStore('trades').get('latest.json', { type: 'json' })
-    return isUsable(payload) ? payload : null
-  } catch {
-    return null
-  }
-}
-
-// 로컬 개발: scripts/collect-local.mjs 가 저장한 파일
-// (Blobs 자격증명이 없는 환경에서도 실데이터로 화면을 확인할 수 있게 함)
-async function fromLocalFile() {
-  try {
-    const { readFile } = await import('node:fs/promises')
-    const { fileURLToPath } = await import('node:url')
-    const path = new URL('./data/latest.json', import.meta.url)
-    const raw = await readFile(fileURLToPath(path), 'utf8')
-    const payload = JSON.parse(raw)
-    return isUsable(payload) ? payload : null
-  } catch {
-    return null
-  }
-}
-
-// 수집된 스냅샷을 읽는다. 없거나 7일 이상 오래되면 null → 호출부에서 샘플로 폴백.
-async function getSnapshot() {
-  return (await fromBlobs()) || (await fromLocalFile())
-}
-
-// 스냅샷 또는 샘플 + 출처 메타데이터를 함께 반환
-async function loadItems() {
-  const snap = await getSnapshot()
-  if (snap) {
-    return { items: snap.items, source: snap.source || 'molit', last_update: snap.last_update, isLive: true }
-  }
-  return { items: generateTrades(), source: 'mock', last_update: null, isLive: false }
-}
-
-const median = (nums) => {
-  if (nums.length === 0) return 0
-  const s = [...nums].sort((a, b) => a - b)
-  const mid = s.length >> 1
-  return s.length % 2 ? s[mid] : Math.round((s[mid - 1] + s[mid]) / 2)
-}
-
-// 검색어를 단지명 / 주소 / 지역명에 대해 AND 매칭
 const matchesQuery = (item, keywords) =>
-  keywords.every((k) => {
-    const hay = `${item.name} ${item.address} ${item.region_name} ${item.umd}`
-    return hay.includes(k)
-  })
+  keywords.every((k) => `${item.name} ${item.address} ${item.region_name} ${item.umd}`.includes(k))
+
+/**
+ * 조회 조건에 맞는 최소한의 샤드를 고른다.
+ * - 시군구 지정: 해당 시군구 전체 거래 (가장 정확)
+ * - 시도만 지정: 그 시도의 최신 N건
+ * - 미지정: 전국 최신 N건
+ * scope로 어느 범위를 본 것인지 함께 알려 결과를 오해하지 않게 한다.
+ */
+async function loadScope({ sggCode, sido }, index) {
+  if (!index) {
+    return { items: generateTrades(), scope: 'sample', isLive: false, source: 'mock', truncated: false }
+  }
+  if (sggCode) {
+    const shard = await readShard(`sgg/${sggCode}.json`)
+    return {
+      items: shard?.items || [],
+      scope: 'sgg',
+      isLive: true,
+      source: index.source,
+      truncated: false,
+    }
+  }
+  if (sido) {
+    const shard = await readShard(`sido/${sido}.json`)
+    const total = index.sido?.[sido]?.total || 0
+    return {
+      items: shard?.items || [],
+      scope: 'sido',
+      isLive: true,
+      source: index.source,
+      truncated: total > (shard?.items?.length || 0),
+    }
+  }
+  const shard = await readShard('recent.json')
+  return {
+    items: shard?.items || [],
+    scope: 'recent',
+    isLive: true,
+    source: index.source,
+    truncated: index.total_items > (shard?.items?.length || 0),
+  }
+}
 
 export default async (req) => {
   const url = new URL(req.url)
   const path = url.pathname.replace(/^\/api/, '') || '/'
   const q = url.searchParams
+  const index = await readIndex()
 
   if (path === '/health') {
-    const snap = await getSnapshot()
     return json({
       status: 'ok',
-      db: Boolean(snap),
-      is_live: Boolean(snap),
-      source: snap?.source || 'mock',
-      last_update: snap?.last_update || null,
-      total_items: snap?.items.length || 0,
-      months: snap?.months || null,
-      version: 'trades-1.0.0',
+      db: Boolean(index),
+      is_live: Boolean(index),
+      source: index?.source || 'mock',
+      last_update: index?.last_update || null,
+      total_items: index?.total_items || 0,
+      months: index?.months || null,
+      collect_stats: index?.stats || null,
+      version: 'trades-2.0.0-sharded',
     })
   }
 
-  // 실거래 목록 검색
   if (path === '/trades') {
-    const { items: all, source, last_update, isLive } = await loadItems()
-
     const search = (q.get('q') || '').trim()
     const sido = q.get('sido') || ''
     const sggCode = q.get('sgg_code') || ''
@@ -113,10 +97,10 @@ export default async (req) => {
     const page = Math.max(1, Number(q.get('page') || 1))
     const limit = Math.min(100, Math.max(1, Number(q.get('limit') || 20)))
 
-    let items = all
+    const { items: pool, scope, isLive, source, truncated } = await loadScope({ sggCode, sido }, index)
+
+    let items = pool
     if (search) items = items.filter((it) => matchesQuery(it, search.split(/\s+/)))
-    if (sido) items = items.filter((it) => it.sido === sido)
-    if (sggCode) items = items.filter((it) => it.sgg_code === sggCode)
     if (propertyType !== 'ALL') items = items.filter((it) => it.property_type === propertyType)
     if (dealType !== 'ALL') items = items.filter((it) => it.deal_type === dealType)
     items = items.filter((it) => it.price >= minPrice && it.price <= maxPrice)
@@ -145,97 +129,136 @@ export default async (req) => {
       has_more: page < totalPages,
       source,
       is_live: isLive,
-      last_update,
+      last_update: index?.last_update || null,
+      // 어느 범위를 검색한 결과인지. truncated면 해당 범위 최신 일부만 본 것.
+      scope,
+      scope_truncated: truncated,
+      scope_size: pool.length,
     })
   }
 
-  // 지역/단지 시세 통계
   if (path === '/stats') {
-    const { items: all, source, last_update, isLive } = await loadItems()
     const sido = q.get('sido') || ''
     const sggCode = q.get('sgg_code') || ''
     const search = (q.get('q') || '').trim()
 
-    let items = all.filter((it) => it.deal_type === 'TRADE')
-    if (sido) items = items.filter((it) => it.sido === sido)
-    if (sggCode) items = items.filter((it) => it.sgg_code === sggCode)
-    if (search) items = items.filter((it) => matchesQuery(it, search.split(/\s+/)))
-
-    if (items.length === 0) {
-      return json({ count: 0, source, is_live: isLive, last_update, message: '조건에 맞는 거래가 없습니다.' })
+    // 검색어가 없으면 미리 계산해 둔 통계를 그대로 준다 (샤드를 읽지 않음)
+    if (index && !search) {
+      const pre = sggCode ? index.sgg?.[sggCode] : sido ? index.sido?.[sido] : null
+      if (pre) {
+        return json({ ...pre, source: index.source, is_live: true, last_update: index.last_update })
+      }
+      if (!sggCode && !sido) {
+        // 전국 통계는 시도별 사전 계산치를 합산해 근사한다.
+        const all = Object.values(index.sido || {}).filter((s) => s.count > 0)
+        if (all.length > 0) {
+          const count = all.reduce((a, s) => a + s.count, 0)
+          return json({
+            count,
+            median_price: Math.round(all.reduce((a, s) => a + s.median_price * s.count, 0) / count),
+            avg_price: Math.round(all.reduce((a, s) => a + s.avg_price * s.count, 0) / count),
+            min_price: Math.min(...all.map((s) => s.min_price)),
+            max_price: Math.max(...all.map((s) => s.max_price)),
+            median_per_pyeong: Math.round(
+              all.reduce((a, s) => a + s.median_per_pyeong * s.count, 0) / count
+            ),
+            trend: mergeTrends(all),
+            approximate: true,
+            source: index.source,
+            is_live: true,
+            last_update: index.last_update,
+          })
+        }
+      }
     }
 
-    const prices = items.map((it) => it.price)
-    const perPyeong = items.map((it) => it.price_per_pyeong).filter((v) => v > 0)
-
-    // 월별 중위 평당가 추이 (최신순 정렬된 데이터를 월로 묶음)
-    const byMonth = new Map()
-    for (const it of items) {
-      const ym = it.deal_date.slice(0, 7)
-      if (!byMonth.has(ym)) byMonth.set(ym, [])
-      if (it.price_per_pyeong > 0) byMonth.get(ym).push(it.price_per_pyeong)
+    // 검색어가 있으면 해당 범위 샤드를 읽어 직접 계산
+    const { items: pool, isLive, source, scope } = await loadScope({ sggCode, sido }, index)
+    const filtered = search ? pool.filter((it) => matchesQuery(it, search.split(/\s+/))) : pool
+    const stats = computeStats(filtered)
+    if (stats.count === 0) {
+      return json({ count: 0, source, is_live: isLive, last_update: index?.last_update || null, scope })
     }
-    const trend = [...byMonth.entries()]
-      .map(([month, vals]) => ({ month, count: vals.length, median_per_pyeong: median(vals) }))
-      .sort((a, b) => a.month.localeCompare(b.month))
-
-    return json({
-      count: items.length,
-      median_price: median(prices),
-      avg_price: Math.round(prices.reduce((a, b) => a + b, 0) / prices.length),
-      min_price: Math.min(...prices),
-      max_price: Math.max(...prices),
-      median_per_pyeong: median(perPyeong),
-      trend,
-      source,
-      is_live: isLive,
-      last_update,
-    })
+    return json({ ...stats, source, is_live: isLive, last_update: index?.last_update || null, scope })
   }
 
-  // 특정 단지 상세 (같은 이름 + 지역의 거래 이력)
   const complexMatch = path.match(/^\/complex\/(.+)$/)
   if (complexMatch) {
-    const key = decodeURIComponent(complexMatch[1])
-    const { items: all, source, last_update, isLive } = await loadItems()
-    const history = all
-      .filter((it) => it.name === key || it.id === key)
-      .sort((a, b) => b.deal_date.localeCompare(a.deal_date))
+    const name = decodeURIComponent(complexMatch[1])
+    let history = []
+    let source = 'mock'
+    let isLive = false
 
-    if (history.length === 0) return json({ detail: `'${key}' 거래 내역을 찾을 수 없습니다.` }, 404)
+    if (index) {
+      // 단지명 → 시군구코드 색인으로 해당 샤드만 읽는다.
+      const complexIndex = (await readShard('complex-index.json')) || {}
+      const codes = complexIndex[name] || []
+      for (const code of codes.slice(0, 3)) {
+        const shard = await readShard(`sgg/${code}.json`)
+        if (shard?.items) history.push(...shard.items.filter((it) => it.name === name))
+      }
+      source = index.source
+      isLive = true
+    } else {
+      history = generateTrades().filter((it) => it.name === name)
+    }
 
-    const trades = history.filter((it) => it.deal_type === 'TRADE')
-    const perPyeong = trades.map((it) => it.price_per_pyeong).filter((v) => v > 0)
+    if (history.length === 0) return json({ detail: `'${name}' 거래 내역을 찾을 수 없습니다.` }, 404)
+    history.sort((a, b) => b.deal_date.localeCompare(a.deal_date))
+
+    const stats = computeStats(history)
     const head = history[0]
-
     return json({
       name: head.name,
       region_name: head.region_name,
       address: head.address,
       property_type: head.property_type,
       build_year: head.build_year,
-      trade_count: trades.length,
-      median_price: median(trades.map((it) => it.price)),
-      median_per_pyeong: median(perPyeong),
+      trade_count: stats.count || 0,
+      median_price: stats.median_price || 0,
+      median_per_pyeong: stats.median_per_pyeong || 0,
       latest_deal_date: head.deal_date,
       history: history.slice(0, 50),
       source,
       is_live: isLive,
-      last_update,
+      last_update: index?.last_update || null,
     })
   }
 
   if (path === '/regions') {
-    return json({
-      regions: REGIONS.map((r) => ({
-        sido: r.sido,
-        sggs: r.sggs.map(([code, name]) => ({ code, name })),
-      })),
-      total_sgg: ALL_SGG.length,
-    })
+    // 실제 데이터가 있는 지역만 노출해, 결과가 0건인 지역을 고르게 하지 않는다.
+    const available = index ? new Set(Object.keys(index.sgg || {})) : null
+    const regions = REGIONS.map((r) => ({
+      sido: r.sido,
+      sggs: r.sggs
+        .filter(([code]) => !available || available.has(code))
+        .map(([code, name]) => ({ code, name, count: index?.sgg?.[code]?.total ?? null })),
+    })).filter((r) => r.sggs.length > 0)
+
+    return json({ regions, total_sgg: available ? available.size : ALL_SGG.length })
   }
 
   return json({ detail: 'Not Found' }, 404)
+}
+
+/** 여러 지역의 월별 추이를 건수 가중으로 합친다. */
+function mergeTrends(statsList) {
+  const byMonth = new Map()
+  for (const s of statsList) {
+    for (const t of s.trend || []) {
+      if (!byMonth.has(t.month)) byMonth.set(t.month, { sum: 0, count: 0 })
+      const e = byMonth.get(t.month)
+      e.sum += t.median_per_pyeong * t.count
+      e.count += t.count
+    }
+  }
+  return [...byMonth.entries()]
+    .map(([month, e]) => ({
+      month,
+      count: e.count,
+      median_per_pyeong: e.count ? Math.round(e.sum / e.count) : 0,
+    }))
+    .sort((a, b) => a.month.localeCompare(b.month))
 }
 
 export const config = {

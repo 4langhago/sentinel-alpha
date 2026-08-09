@@ -8,17 +8,32 @@ import TradeCard from '../components/TradeCard'
 import PriceTrendChart from '../components/PriceTrendChart'
 import DataSourceBadge from '../components/DataSourceBadge'
 
-const QUICK_REGIONS = ['서울', '경기', '인천', '부산', '대구', '대전', '광주', '울산']
-
 const HomePage = () => {
   const navigate = useNavigate()
   const [keyword, setKeyword] = useState('')
   const [sido, setSido] = useState('서울')
+  // 수집된 데이터가 있는 지역만 노출한다. 하드코딩하면 데이터 없는 지역이
+  // 눌리고 0건이 나와 고장난 것처럼 보인다.
+  const [availableSido, setAvailableSido] = useState<string[]>(['서울'])
   const [stats, setStats] = useState<RegionStats | null>(null)
   const [statsLoading, setStatsLoading] = useState(true)
 
   const params = useMemo(() => ({ sido, sort: 'recent' as const, limit: 6 }), [sido])
   const { items, total, isLive, lastUpdate, fetchedAt, loading, error, refresh } = useTrades(params)
+
+  useEffect(() => {
+    let alive = true
+    tradeApi.regions().then((regions) => {
+      if (!alive || regions.length === 0) return
+      const list = regions.map((r) => r.sido)
+      setAvailableSido(list)
+      // 기본 선택 지역에 데이터가 없으면 첫 번째 지역으로 옮긴다.
+      setSido((cur) => (list.includes(cur) ? cur : list[0]))
+    })
+    return () => {
+      alive = false
+    }
+  }, [])
 
   useEffect(() => {
     let alive = true
@@ -110,7 +125,7 @@ const HomePage = () => {
             <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-gray-700 dark:text-gray-200 mr-2">
               <MapPin className="w-4 h-4" /> 지역
             </span>
-            {QUICK_REGIONS.map((r) => (
+            {availableSido.map((r) => (
               <button
                 key={r}
                 onClick={() => setSido(r)}

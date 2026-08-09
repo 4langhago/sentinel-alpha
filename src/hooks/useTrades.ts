@@ -11,6 +11,9 @@ export interface TradesState {
   /** 실제 국토부 데이터인지 (false = 샘플) */
   isLive: boolean
   source: string | null
+  scope: string | null
+  scopeTruncated: boolean
+  scopeSize: number
   /** 서버가 데이터를 마지막으로 수집한 시각 */
   lastUpdate: string | null
   /** 브라우저가 마지막으로 조회한 시각 */
@@ -31,6 +34,9 @@ export const useTrades = (params: TradeSearchParams = {}): TradesState => {
   const [totalPages, setTotalPages] = useState(1)
   const [isLive, setIsLive] = useState(false)
   const [source, setSource] = useState<string | null>(null)
+  const [scope, setScope] = useState<string | null>(null)
+  const [scopeTruncated, setScopeTruncated] = useState(false)
+  const [scopeSize, setScopeSize] = useState(0)
   const [lastUpdate, setLastUpdate] = useState<string | null>(null)
   const [fetchedAt, setFetchedAt] = useState<Date | null>(null)
   const [loading, setLoading] = useState(true)
@@ -49,6 +55,9 @@ export const useTrades = (params: TradeSearchParams = {}): TradesState => {
       setTotalPages(result.totalPages)
       setIsLive(result.isLive)
       setSource(result.source)
+      setScope(result.scope)
+      setScopeTruncated(result.scopeTruncated)
+      setScopeSize(result.scopeSize)
       setLastUpdate(result.lastUpdate)
       setFetchedAt(new Date())
       setError(null)
@@ -78,7 +87,10 @@ export const useTrades = (params: TradeSearchParams = {}): TradesState => {
     }
   }, [fetchData])
 
-  return { items, total, totalPages, isLive, source, lastUpdate, fetchedAt, loading, error, refresh: fetchData }
+  return {
+    items, total, totalPages, isLive, source, scope, scopeTruncated, scopeSize,
+    lastUpdate, fetchedAt, loading, error, refresh: fetchData,
+  }
 }
 
 export default useTrades

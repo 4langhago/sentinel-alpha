@@ -55,6 +55,9 @@ export const tradeApi = {
       source: d.source || 'unknown',
       isLive: Boolean(d.is_live),
       lastUpdate: d.last_update ?? null,
+      scope: d.scope || 'unknown',
+      scopeTruncated: Boolean(d.scope_truncated),
+      scopeSize: d.scope_size || 0,
     }
   },
 

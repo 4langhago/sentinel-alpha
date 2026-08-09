@@ -5,12 +5,13 @@
 //   npm run collect                                       (전체 수집)
 //
 // 키는 .env.local 또는 .env 의 MOLIT_API_KEY 에서 읽는다.
-// 결과는 netlify/functions/data/latest.json 에 저장되고,
-// 로컬 개발 서버(dev-api)가 이 파일을 Blobs 대신 사용한다.
+// 결과는 netlify/functions/data/ 아래에 조회용 샤드로 저장되고,
+// 로컬 개발 서버(dev-api)가 이 파일들을 Blobs 대신 사용한다.
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { collectTrades } from '../netlify/functions/lib/collect.mjs'
+import { buildShards } from '../netlify/functions/lib/storage.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ROOT = resolve(__dirname, '..')
@@ -99,20 +100,67 @@ const main = async () => {
     return fail('', '수집된 거래가 0건입니다. 저장하지 않습니다.')
   }
 
+  // 조회용 샤드로 쪼개 저장한다. 한 파일에 몰아두면 요청마다 전체를 파싱하게 된다.
   const outDir = resolve(ROOT, 'netlify/functions/data')
-  mkdirSync(outDir, { recursive: true })
-  const outPath = resolve(outDir, 'latest.json')
-  writeFileSync(outPath, JSON.stringify(payload), 'utf8')
+  const shards = buildShards(payload)
+  let bytes = 0
+  for (const { key, value } of shards) {
+    const path = resolve(outDir, key)
+    mkdirSync(dirname(path), { recursive: true })
+    const body = JSON.stringify(value)
+    writeFileSync(path, body, 'utf8')
+    bytes += Buffer.byteLength(body)
+  }
+  const outPath = outDir
 
-  console.log(`\n저장 완료: ${outPath}`)
-  console.log('\n샘플 3건:')
-  for (const it of payload.items.slice(0, 3)) {
+  if (stats.skipped_services?.length) {
+    console.log(
+      `\n건너뛴 서비스: ${stats.skipped_services.join(', ')} ` +
+        '(data.go.kr에서 해당 API 활용신청이 필요합니다)'
+    )
+  }
+  if (stats.cancelled > 0) {
+    console.log(`계약 해제로 제외한 거래: ${stats.cancelled}건`)
+  }
+
+  // 매매/전월세 구성을 함께 보여준다. 구분 없이 금액만 찍으면
+  // 월세 보증금이 매매가처럼 보여 오해를 부른다.
+  const count = (fn) => payload.items.filter(fn).length
+  console.log(
+    `\n구성: 매매 ${count((i) => i.deal_type === 'TRADE')}건 · ` +
+      `전세 ${count((i) => i.rent_type === 'JEONSE')}건 · ` +
+      `월세 ${count((i) => i.rent_type === 'MONTHLY')}건`
+  )
+
+  console.log(
+    `\n저장 완료: ${outPath}\n` +
+      `  샤드 ${shards.length}개 · 총 ${(bytes / 1024 / 1024).toFixed(1)}MB`
+  )
+
+  const describe = (it) => {
     const eok = (it.price / 100_000_000).toFixed(2)
     const perPyeong = Math.round(it.price_per_pyeong / 10000).toLocaleString()
-    console.log(
+    const kind =
+      it.deal_type === 'TRADE'
+        ? `매매 ${eok}억 (평당 ${perPyeong}만원)`
+        : it.rent_type === 'JEONSE'
+        ? `전세 보증금 ${eok}억`
+        : `월세 보증금 ${eok}억 / 월 ${Math.round(it.monthly_rent / 10000)}만원`
+    return (
       `  ${it.deal_date}  ${it.region_name} ${it.name}  ` +
-        `${it.area}㎡ ${it.floor}층  ${eok}억  (평당 ${perPyeong}만원)`
+      `${it.area}㎡ ${it.floor}층  ${kind}`
     )
+  }
+
+  const trades = payload.items.filter((i) => i.deal_type === 'TRADE')
+  if (trades.length) {
+    console.log('\n매매 샘플 3건:')
+    trades.slice(0, 3).forEach((it) => console.log(describe(it)))
+  }
+  const rents = payload.items.filter((i) => i.deal_type === 'RENT')
+  if (rents.length) {
+    console.log('\n전월세 샘플 3건:')
+    rents.slice(0, 3).forEach((it) => console.log(describe(it)))
   }
   console.log('\n이제 npm run dev:api 와 npm run dev 를 띄우면 실데이터로 화면이 뜹니다.')
 }

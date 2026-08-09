@@ -3,6 +3,7 @@
 // Netlify Blobs("trades" store, key "latest.json")에 저장한다.
 import { getStore } from '@netlify/blobs'
 import { collectTrades } from './lib/collect.mjs'
+import { buildShards } from './lib/storage.mjs'
 
 export default async () => {
   const serviceKey = process.env.MOLIT_API_KEY || ''
@@ -28,7 +29,17 @@ export default async () => {
     return new Response(JSON.stringify({ ok: false, errors: errors.slice(0, 5) }), { status: 200 })
   }
 
-  await getStore('trades').setJSON('latest.json', payload)
+  // 조회용 샤드로 쪼개 저장한다. index.json을 마지막에 써서,
+  // 샤드가 다 올라가기 전의 index를 읽고 빈 결과를 내는 일이 없게 한다.
+  const store = getStore('trades')
+  const shards = buildShards(payload)
+  const indexShard = shards.find((s) => s.key === 'index.json')
+  for (const { key, value } of shards) {
+    if (key === 'index.json') continue
+    await store.setJSON(key, value)
+  }
+  await store.setJSON('index.json', indexShard.value)
+  console.log(`[refresh-trades] 샤드 ${shards.length}개 저장 완료`)
 
   console.log(
     `[refresh-trades] 완료: ${payload.stats.deduped}건 저장 ` +

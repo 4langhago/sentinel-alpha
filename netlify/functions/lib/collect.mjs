@@ -29,9 +29,16 @@ export function buildPlan({ months = DEFAULT_MONTHS, maxCalls = DEFAULT_MAX_CALL
   return plan.slice(0, maxCalls)
 }
 
-/** 서비스키 자체가 잘못된 경우엔 계속 호출해도 무의미하므로 즉시 중단해야 한다. */
-const isFatalKeyError = (msg) =>
-  /서비스키|SERVICE_KEY|등록되지|IP|허용되지|활용신청|LIMITED_NUMBER|요청제한/i.test(msg)
+/**
+ * 키/권한 관련 오류. data.go.kr은 "활용신청하지 않은 서비스"에도
+ * 키 자체가 잘못됐을 때와 똑같이 code 30(등록되지 않은 서비스키)을 반환한다.
+ * 따라서 이 오류만으로는 "키가 틀렸다"고 단정할 수 없다.
+ */
+const isKeyOrPermissionError = (msg) =>
+  /서비스키|SERVICE_KEY|등록되지|활용신청|SERVICE_ACCESS_DENIED|허용되지/i.test(msg)
+
+/** 호출 한도 초과 등 더 진행해도 의미 없는 오류 */
+const isQuotaError = (msg) => /LIMITED_NUMBER|요청제한|초과/i.test(msg)
 
 /**
  * 실거래를 수집해 정규화된 payload를 만든다.
@@ -59,18 +66,39 @@ export async function collectTrades({
   let cancelled = 0
   let fatal = null
 
+  // 활용신청하지 않은 서비스는 계속 호출해봐야 실패하므로 한 번 겪으면 건너뛴다.
+  // (전체 수집을 중단시키지는 않는다 — 신청한 서비스만이라도 수집해야 한다.)
+  const disabled = new Map() // serviceId → 사유
+  let succeeded = 0
+
   for (const { sgg, ym, svc } of plan) {
+    if (disabled.has(svc.id)) continue
     try {
       const rows = await fetchTrades({ serviceKey, service: svc, lawdCd: sgg.code, dealYmd: ym })
       calls++
+      succeeded++
       cancelled += rows.cancelledCount || 0
       for (const r of rows) items.push({ ...r, sido: sgg.sido, sgg: sgg.sgg, region_name: sgg.name })
       if (calls % 50 === 0) onProgress(`${calls}/${plan.length} 호출 · 누적 ${items.length}건`)
     } catch (e) {
       errors.push(`${sgg.name}/${ym}/${svc.id}: ${e.message}`)
-      if (isFatalKeyError(e.message)) {
-        fatal = e.message
+
+      if (isQuotaError(e.message)) {
+        fatal = `호출 한도 초과: ${e.message}`
         break
+      }
+
+      if (isKeyOrPermissionError(e.message)) {
+        disabled.set(svc.id, e.message)
+        onProgress(`${svc.label}은(는) 사용할 수 없어 건너뜁니다 — ${e.message}`)
+        // 모든 서비스가 막혔다면 그때는 키 자체 문제로 보고 중단한다.
+        if (disabled.size >= new Set(plan.map((p) => p.svc.id)).size) {
+          fatal =
+            succeeded > 0
+              ? null
+              : `모든 서비스가 거부됐습니다: ${[...disabled.values()].join(' / ')}`
+          break
+        }
       }
     }
   }
@@ -99,6 +127,8 @@ export async function collectTrades({
         /** 계약 해제로 제외한 건수 */
         cancelled,
         errors: errors.length,
+        /** 활용신청이 안 돼 건너뛴 서비스 */
+        skipped_services: [...disabled.keys()],
         elapsed_sec: Math.round((Date.now() - started) / 1000),
       },
     },
