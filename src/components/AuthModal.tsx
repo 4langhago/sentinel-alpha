@@ -66,6 +66,11 @@ const AuthModal = () => {
   const handleForgotPassword = async () => {
     setError('')
     setNotice('')
+    // 로컬 모드에서는 재설정 메일을 보낼 방법이 없으므로 안내만 하고 API를 호출하지 않는다.
+    if (!isCloudAuth) {
+      setError('현재 이 브라우저에만 계정이 저장되는 로컬 모드라 재설정 메일을 보낼 수 없습니다. 관리자에게 문의하거나 Supabase 설정 후 이용해 주세요.')
+      return
+    }
     if (!email.trim()) {
       setError('비밀번호를 재설정할 이메일을 입력해 주세요.')
       return
@@ -79,7 +84,7 @@ const AuthModal = () => {
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={closeAuthModal} />
 
-      <div className="relative bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden">
+      <div className="relative bg-white dark:bg-gray-900 rounded-3xl shadow-2xl w-full max-w-md overflow-hidden">
         {/* Header gradient */}
         <div className="bg-gradient-to-r from-violet-600 to-indigo-600 px-8 pt-8 pb-6 text-white">
           <button
@@ -122,7 +127,7 @@ const AuthModal = () => {
         <form onSubmit={handleSubmit} className="px-8 py-6 space-y-4">
           {tab === 'signup' && (
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">이름</label>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">이름</label>
               <div className="relative">
                 <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                 <input
@@ -131,14 +136,14 @@ const AuthModal = () => {
                   onChange={(e) => setName(e.target.value)}
                   placeholder="홍길동"
                   required
-                  className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent text-sm"
+                  className="w-full pl-10 pr-4 py-3 border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent text-sm"
                 />
               </div>
             </div>
           )}
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">이메일</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">이메일</label>
             <div className="relative">
               <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
               <input
@@ -147,13 +152,13 @@ const AuthModal = () => {
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="example@email.com"
                 required
-                className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent text-sm"
+                className="w-full pl-10 pr-4 py-3 border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent text-sm"
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">비밀번호</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">비밀번호</label>
             <div className="relative">
               <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
               <input
@@ -162,12 +167,12 @@ const AuthModal = () => {
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder={tab === 'signup' ? '6자 이상 입력' : '비밀번호'}
                 required
-                className="w-full pl-10 pr-10 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent text-sm"
+                className="w-full pl-10 pr-10 py-3 border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent text-sm"
               />
               <button
                 type="button"
                 onClick={() => setShowPw((v) => !v)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
               >
                 {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
@@ -175,13 +180,13 @@ const AuthModal = () => {
           </div>
 
           {error && (
-            <div className="bg-red-50 border border-red-200 text-red-600 rounded-xl px-4 py-3 text-sm">
+            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 rounded-xl px-4 py-3 text-sm">
               {error}
             </div>
           )}
 
           {notice && (
-            <div className="bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-xl px-4 py-3 text-sm flex items-start space-x-2">
+            <div className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400 rounded-xl px-4 py-3 text-sm flex items-start space-x-2">
               <CheckCircle2 className="w-4 h-4 mt-0.5 shrink-0" />
               <span>{notice}</span>
             </div>
@@ -199,14 +204,14 @@ const AuthModal = () => {
           {isCloudAuth && (
             <>
               <div className="flex items-center space-x-3">
-                <div className="flex-1 h-px bg-gray-200" />
-                <span className="text-xs text-gray-400">또는</span>
-                <div className="flex-1 h-px bg-gray-200" />
+                <div className="flex-1 h-px bg-gray-200 dark:bg-gray-700" />
+                <span className="text-xs text-gray-400 dark:text-gray-500">또는</span>
+                <div className="flex-1 h-px bg-gray-200 dark:bg-gray-700" />
               </div>
               <button
                 type="button"
                 onClick={handleGoogle}
-                className="w-full py-3 border border-gray-200 rounded-xl font-semibold text-gray-700 text-sm hover:bg-gray-50 transition-colors"
+                className="w-full py-3 border border-gray-200 dark:border-gray-700 rounded-xl font-semibold text-gray-700 dark:text-gray-200 text-sm hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
               >
                 구글 계정으로 계속하기
               </button>
@@ -214,17 +219,17 @@ const AuthModal = () => {
           )}
 
           {!isCloudAuth && (
-            <p className="text-center text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2">
+            <p className="text-center text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl px-4 py-2">
               현재 계정이 이 브라우저에만 저장됩니다. Supabase 설정 후 기기 간 로그인이 가능합니다.
             </p>
           )}
 
-          {tab === 'login' && isCloudAuth && (
+          {tab === 'login' && (
             <p className="text-center text-sm">
               <button
                 type="button"
                 onClick={handleForgotPassword}
-                className="text-gray-500 hover:text-violet-600 hover:underline"
+                className="text-gray-500 dark:text-gray-400 hover:text-violet-600 dark:hover:text-violet-400 hover:underline"
               >
                 비밀번호를 잊으셨나요?
               </button>
@@ -232,12 +237,12 @@ const AuthModal = () => {
           )}
 
           {tab === 'login' && (
-            <p className="text-center text-sm text-gray-500">
+            <p className="text-center text-sm text-gray-500 dark:text-gray-400">
               계정이 없으신가요?{' '}
               <button
                 type="button"
                 onClick={() => { setTab('signup'); setError('') }}
-                className="text-violet-600 font-semibold hover:underline"
+                className="text-violet-600 dark:text-violet-400 font-semibold hover:underline"
               >
                 무료로 가입하기
               </button>
@@ -245,7 +250,7 @@ const AuthModal = () => {
           )}
 
           {tab === 'signup' && (
-            <p className="text-center text-xs text-gray-400">
+            <p className="text-center text-xs text-gray-400 dark:text-gray-500">
               가입 시 이용약관 및 개인정보처리방침에 동의하게 됩니다
             </p>
           )}

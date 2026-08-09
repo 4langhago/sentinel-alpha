@@ -1,5 +1,5 @@
 import React from 'react'
-import { Link, useLocation } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { Search, Heart, Calculator, Home, Menu, X, UserPlus, LogIn, LogOut, Crown, User } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import ThemeToggle from './ThemeToggle'
@@ -13,8 +13,9 @@ const TIER_BADGE: Record<string, { label: string; cls: string }> = {
 
 const Navigation = () => {
   const location = useLocation()
+  const navigate = useNavigate()
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false)
-  const { user, isLoggedIn, logout, openAuthModal, openMembershipModal, remainingViews, dailyLimit } = useAuth()
+  const { user, isLoggedIn, logout, openMembershipModal, remainingViews, dailyLimit } = useAuth()
 
   const navItems = [
     { path: '/', label: '홈', icon: Home },
@@ -100,14 +101,14 @@ const Navigation = () => {
             ) : (
               <>
                 <button
-                  onClick={() => openAuthModal('login')}
+                  onClick={() => navigate('/login')}
                   className="flex items-center space-x-1.5 px-4 py-2 text-sm text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors font-medium"
                 >
                   <LogIn className="w-4 h-4" />
                   <span>로그인</span>
                 </button>
                 <button
-                  onClick={() => openAuthModal('signup')}
+                  onClick={() => navigate('/signup')}
                   className="flex items-center space-x-1.5 px-4 py-2 bg-gradient-to-r from-violet-600 to-indigo-600 text-white rounded-lg hover:shadow-lg hover:shadow-violet-500/30 transition-all font-medium text-sm"
                 >
                   <UserPlus className="w-4 h-4" />
@@ -192,14 +193,14 @@ const Navigation = () => {
               ) : (
                 <>
                   <button
-                    onClick={() => { openAuthModal('login'); setIsMobileMenuOpen(false) }}
+                    onClick={() => { navigate('/login'); setIsMobileMenuOpen(false) }}
                     className="w-full flex items-center justify-center space-x-2 px-3 py-2.5 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 rounded-lg font-medium text-sm"
                   >
                     <LogIn className="w-4 h-4" />
                     <span>로그인</span>
                   </button>
                   <button
-                    onClick={() => { openAuthModal('signup'); setIsMobileMenuOpen(false) }}
+                    onClick={() => { navigate('/signup'); setIsMobileMenuOpen(false) }}
                     className="w-full flex items-center justify-center space-x-2 px-3 py-2.5 bg-gradient-to-r from-violet-600 to-indigo-600 text-white rounded-lg font-medium text-sm"
                   >
                     <UserPlus className="w-4 h-4" />

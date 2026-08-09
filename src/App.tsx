@@ -13,6 +13,9 @@ const SearchPage     = lazy(() => import('./pages/SearchPage'))
 const FavoritesPage  = lazy(() => import('./pages/FavoritesPage'))
 const CalculatorPage = lazy(() => import('./pages/CalculatorPage'))
 const ComplexPage    = lazy(() => import('./pages/ComplexPage'))
+const LoginPage          = lazy(() => import('./pages/auth/LoginPage'))
+const SignupPage         = lazy(() => import('./pages/auth/SignupPage'))
+const ForgotPasswordPage = lazy(() => import('./pages/auth/ForgotPasswordPage'))
 
 const PageLoader = () => (
   <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-indigo-50">
@@ -69,6 +72,9 @@ function App() {
                     <Route path="/favorites"   element={<FavoritesPage />} />
                     <Route path="/calculator"  element={<CalculatorPage />} />
                     <Route path="/complex/:name" element={<ComplexPage />} />
+                    <Route path="/login"           element={<LoginPage />} />
+                    <Route path="/signup"          element={<SignupPage />} />
+                    <Route path="/forgot-password" element={<ForgotPasswordPage />} />
                     {/* 구 경매 상세 경로로 들어온 링크는 검색으로 흘려보낸다 */}
                     <Route path="/detail/:id"  element={<Navigate to="/search" replace />} />
                     <Route path="*"            element={<Navigate to="/" replace />} />
