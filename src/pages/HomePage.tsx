@@ -65,7 +65,7 @@ const HomePage = () => {
             <div className="inline-flex items-center gap-2 bg-white/10 backdrop-blur border border-white/15 rounded-full px-4 py-2 mb-8">
               <span className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse" />
               <span className="text-white/80 text-sm font-medium">
-                {sido} 최근 실거래{' '}
+                {sido} 최근 조회된 실거래(매매·전월세 전체){' '}
                 <span className="text-emerald-400 font-bold">{total.toLocaleString()}건</span>
               </span>
             </div>
@@ -147,7 +147,9 @@ const HomePage = () => {
             <BarChart3 className="w-7 h-7 text-violet-600" />
             {sido} 아파트 시세 요약
           </h2>
-          <p className="text-gray-500 dark:text-gray-400 text-sm mb-6">최근 수집된 매매 실거래 기준</p>
+          <p className="text-gray-500 dark:text-gray-400 text-sm mb-6">
+            매매 실거래 전체 집계 기준 (위 최근 조회 건수는 전월세를 포함한 최신 조회 결과라 이 집계와 다를 수 있습니다)
+          </p>
 
           {statsLoading ? (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -163,7 +165,7 @@ const HomePage = () => {
             <>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
                 {[
-                  { label: '거래 건수', value: `${stats.count.toLocaleString()}건` },
+                  { label: '매매 거래 건수', value: `${stats.count.toLocaleString()}건` },
                   { label: '중위 거래가', value: formatPrice(stats.median_price) },
                   {
                     label: '중위 평당가',
@@ -196,7 +198,9 @@ const HomePage = () => {
                 <TrendingUp className="w-7 h-7 text-violet-600" />
                 {sido} 최근 실거래
               </h2>
-              <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">가장 최근 신고된 거래부터</p>
+              <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">
+                가장 최근 신고된 거래부터 (매매·전월세 전체)
+              </p>
             </div>
             <Link
               to={`/search?sido=${encodeURIComponent(sido)}`}

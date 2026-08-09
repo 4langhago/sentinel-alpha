@@ -48,9 +48,19 @@ const PriceTrendChart = ({ trend, className = '' }: Props) => {
   const line = trend.map((t, i) => `${i === 0 ? 'M' : 'L'} ${x(i).toFixed(1)} ${y(t.median_per_pyeong).toFixed(1)}`).join(' ')
   const area = `${line} L ${x(trend.length - 1).toFixed(1)} ${PAD.top + innerH} L ${x(0).toFixed(1)} ${PAD.top + innerH} Z`
 
-  const first = values[0]
-  const last = values[values.length - 1]
-  const changePct = first > 0 ? Math.round(((last - first) / first) * 1000) / 10 : 0
+  // 당월은 아직 수집이 끝나지 않아 건수가 적고 값이 튈 수 있다.
+  // 마지막 지점이 당월이면 "집계 중"으로 별도 표시하고, 증감률 계산에서는 제외한다.
+  const now = new Date()
+  const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  const lastIdx = trend.length - 1
+  const lastIsPartial = trend[lastIdx].month === currentMonth
+  const completeTrend = lastIsPartial ? trend.slice(0, -1) : trend
+
+  const first = completeTrend[0]?.median_per_pyeong
+  const last = completeTrend[completeTrend.length - 1]?.median_per_pyeong
+  const changePct =
+    completeTrend.length >= 2 && first > 0 ? Math.round(((last - first) / first) * 1000) / 10 : null
+  const changeBaseLabel = completeTrend[0]?.month
 
   const manwon = (v: number) => Math.round(v / 10000).toLocaleString()
 
@@ -58,18 +68,22 @@ const PriceTrendChart = ({ trend, className = '' }: Props) => {
     <div className={className}>
       <div className="flex items-baseline justify-between mb-2">
         <p className="text-sm font-semibold text-gray-700 dark:text-gray-200">월별 중위 평당가</p>
-        <p
-          className={`text-sm font-bold ${
-            changePct > 0
-              ? 'text-rose-600 dark:text-rose-400'
-              : changePct < 0
-              ? 'text-blue-600 dark:text-blue-400'
-              : 'text-gray-500'
-          }`}
-        >
-          {trend[0].month} 대비 {changePct > 0 ? '+' : ''}
-          {changePct}%
-        </p>
+        {changePct !== null ? (
+          <p
+            className={`text-sm font-bold ${
+              changePct > 0
+                ? 'text-rose-600 dark:text-rose-400'
+                : changePct < 0
+                ? 'text-blue-600 dark:text-blue-400'
+                : 'text-gray-500'
+            }`}
+          >
+            {changeBaseLabel} 대비 {changePct > 0 ? '+' : ''}
+            {changePct}%
+          </p>
+        ) : (
+          <p className="text-sm text-gray-400 dark:text-gray-500">완결된 월이 부족해 증감률을 계산할 수 없습니다</p>
+        )}
       </div>
 
       <div className="overflow-x-auto">
@@ -110,26 +124,76 @@ const PriceTrendChart = ({ trend, className = '' }: Props) => {
           })}
 
           <path d={area} fill="url(#trendFill)" />
-          <path d={line} fill="none" stroke="rgb(139 92 246)" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
+          {/* 당월(집계 중) 구간은 점선으로 분리해 확정 구간과 구분한다. */}
+          {lastIsPartial ? (
+            <>
+              <path
+                d={trend
+                  .slice(0, lastIdx)
+                  .map((t, i) => `${i === 0 ? 'M' : 'L'} ${x(i).toFixed(1)} ${y(t.median_per_pyeong).toFixed(1)}`)
+                  .join(' ')}
+                fill="none"
+                stroke="rgb(139 92 246)"
+                strokeWidth="2.5"
+                strokeLinejoin="round"
+                strokeLinecap="round"
+              />
+              <path
+                d={`M ${x(lastIdx - 1).toFixed(1)} ${y(trend[lastIdx - 1].median_per_pyeong).toFixed(1)} L ${x(
+                  lastIdx
+                ).toFixed(1)} ${y(trend[lastIdx].median_per_pyeong).toFixed(1)}`}
+                fill="none"
+                stroke="rgb(139 92 246)"
+                strokeWidth="2.5"
+                strokeDasharray="5 4"
+                strokeLinejoin="round"
+                strokeLinecap="round"
+                opacity="0.55"
+              />
+            </>
+          ) : (
+            <path d={line} fill="none" stroke="rgb(139 92 246)" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
+          )}
 
-          {trend.map((t, i) => (
-            <g key={t.month}>
-              <circle cx={x(i)} cy={y(t.median_per_pyeong)} r="4" fill="rgb(139 92 246)" />
-              <title>{`${t.month} · 중위 평당 ${manwon(t.median_per_pyeong)}만원 · ${t.count}건`}</title>
-              <text
-                x={x(i)}
-                y={H - 8}
-                textAnchor="middle"
-                className="fill-gray-400 dark:fill-gray-500"
-                fontSize="11"
-              >
-                {t.month.slice(2).replace('-', '.')}
-              </text>
-            </g>
-          ))}
+          {trend.map((t, i) => {
+            const partial = lastIsPartial && i === lastIdx
+            return (
+              <g key={t.month}>
+                <circle
+                  cx={x(i)}
+                  cy={y(t.median_per_pyeong)}
+                  r="4"
+                  fill="rgb(139 92 246)"
+                  opacity={partial ? 0.55 : 1}
+                  stroke={partial ? 'rgb(139 92 246)' : 'none'}
+                  strokeDasharray={partial ? '2 2' : undefined}
+                />
+                <title>
+                  {`${t.month} · 중위 평당 ${manwon(t.median_per_pyeong)}만원 · ${t.count}건`}
+                  {partial ? ' (집계 중, 당월 데이터 미확정)' : ''}
+                </title>
+                <text
+                  x={x(i)}
+                  y={H - 8}
+                  textAnchor={partial ? 'end' : 'middle'}
+                  className={partial ? 'fill-violet-400 dark:fill-violet-400' : 'fill-gray-400 dark:fill-gray-500'}
+                  fontSize="11"
+                >
+                  {t.month.slice(2).replace('-', '.')}
+                </text>
+                {partial && (
+                  <text x={x(i)} y={y(t.median_per_pyeong) - 10} textAnchor="end" className="fill-violet-400" fontSize="10">
+                    집계 중
+                  </text>
+                )}
+              </g>
+            )
+          })}
         </svg>
       </div>
-      <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">단위: 만원 / 3.3㎡</p>
+      <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+        단위: 만원 / 3.3㎡{lastIsPartial ? ' · 점선 구간(당월)은 아직 집계 중인 데이터로 확정치가 아닙니다.' : ''}
+      </p>
     </div>
   )
 }

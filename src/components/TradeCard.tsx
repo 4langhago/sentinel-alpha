@@ -39,8 +39,8 @@ const TradeCard = ({ item, medianPerPyeong }: Props) => {
         </span>
       </div>
 
-      <div className="flex items-baseline gap-2 mb-3">
-        <span className="text-2xl font-black text-gray-900 dark:text-white">
+      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 mb-3">
+        <span className="text-xl sm:text-2xl font-black text-gray-900 dark:text-white whitespace-nowrap">
           {formatPrice(item.price)}
         </span>
         {isRent ? (
@@ -86,28 +86,31 @@ const TradeCard = ({ item, medianPerPyeong }: Props) => {
         )}
       </div>
 
-      <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-700 flex items-center justify-between">
-        <span className="text-xs text-gray-500 dark:text-gray-400">
-          {item.property_type === 'LAND' ? '평당(대지)' : '평당'}{' '}
-          <span className="font-semibold text-gray-700 dark:text-gray-200">
-            {Math.round(item.price_per_pyeong / 10000).toLocaleString()}만원
+      {/* 전월세는 보증금/월세 기준이라 평당가·중위 대비 비교가 의미 없으므로 매매에만 표시한다. */}
+      {!isRent && (
+        <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-700 flex items-center justify-between">
+          <span className="text-xs text-gray-500 dark:text-gray-400">
+            {item.property_type === 'LAND' ? '평당(대지)' : '평당'}{' '}
+            <span className="font-semibold text-gray-700 dark:text-gray-200">
+              {Math.round(item.price_per_pyeong / 10000).toLocaleString()}만원
+            </span>
           </span>
-        </span>
-        {diffPct !== null && !item.share_deal && (
-          <span
-            className={`text-xs font-semibold ${
-              diffPct > 0
-                ? 'text-rose-600 dark:text-rose-400'
-                : diffPct < 0
-                ? 'text-blue-600 dark:text-blue-400'
-                : 'text-gray-400'
-            }`}
-          >
-            지역 중위 대비 {diffPct > 0 ? '+' : ''}
-            {diffPct}%
-          </span>
-        )}
-      </div>
+          {diffPct !== null && !item.share_deal && (
+            <span
+              className={`text-xs font-semibold ${
+                diffPct > 0
+                  ? 'text-rose-600 dark:text-rose-400'
+                  : diffPct < 0
+                  ? 'text-blue-600 dark:text-blue-400'
+                  : 'text-gray-400'
+              }`}
+            >
+              지역 중위 대비 {diffPct > 0 ? '+' : ''}
+              {diffPct}%
+            </span>
+          )}
+        </div>
+      )}
     </Link>
   )
 }
