@@ -123,3 +123,6 @@ venv/
 .omc/
 .playwright-mcp/
 .claude/
+
+# 로컬 수집 실거래 데이터 (배포는 Netlify Blobs 사용)
+netlify/functions/data/

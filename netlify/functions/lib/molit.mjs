@@ -70,9 +70,27 @@ const readError = (xml) => {
  * @param {string} opts.dealYmd     'YYYYMM'
  * @param {number} [opts.numOfRows]
  */
+/**
+ * data.go.kr은 "일반 인증키(Encoding)"와 "(Decoding)" 두 가지를 보여준다.
+ * Encoding 키를 그대로 URLSearchParams에 넣으면 %가 다시 인코딩돼(%2B → %252B)
+ * 인증에 실패한다. 인코딩된 형태로 보이면 한 번 디코딩해서 사용한다.
+ */
+export function normalizeServiceKey(key) {
+  const k = (key || '').trim()
+  if (!k) return ''
+  if (/%[0-9A-Fa-f]{2}/.test(k)) {
+    try {
+      return decodeURIComponent(k)
+    } catch {
+      return k
+    }
+  }
+  return k
+}
+
 export async function fetchTrades({ serviceKey, service, lawdCd, dealYmd, numOfRows = 1000 }) {
   const params = new URLSearchParams({
-    serviceKey,
+    serviceKey: normalizeServiceKey(serviceKey),
     LAWD_CD: lawdCd,
     DEAL_YMD: dealYmd,
     pageNo: '1',

@@ -17,17 +17,40 @@ const json = (body, status = 200) =>
 
 const STALE_MS = 7 * 24 * 60 * 60 * 1000
 
-// 수집된 스냅샷을 읽는다. 없거나 7일 이상 오래되면 null → 호출부에서 샘플로 폴백.
-async function getSnapshot() {
+const isUsable = (payload) =>
+  payload &&
+  Array.isArray(payload.items) &&
+  payload.items.length > 0 &&
+  Date.now() - new Date(payload.last_update).getTime() <= STALE_MS
+
+// 배포 환경: 스케줄 함수가 저장한 Blobs 스냅샷
+async function fromBlobs() {
   try {
     const payload = await getStore('trades').get('latest.json', { type: 'json' })
-    if (!payload || !Array.isArray(payload.items) || payload.items.length === 0) return null
-    if (Date.now() - new Date(payload.last_update).getTime() > STALE_MS) return null
-    return payload
-  } catch (e) {
-    console.warn('[api] Blobs 조회 실패, 샘플로 폴백:', e.message)
+    return isUsable(payload) ? payload : null
+  } catch {
     return null
   }
+}
+
+// 로컬 개발: scripts/collect-local.mjs 가 저장한 파일
+// (Blobs 자격증명이 없는 환경에서도 실데이터로 화면을 확인할 수 있게 함)
+async function fromLocalFile() {
+  try {
+    const { readFile } = await import('node:fs/promises')
+    const { fileURLToPath } = await import('node:url')
+    const path = new URL('./data/latest.json', import.meta.url)
+    const raw = await readFile(fileURLToPath(path), 'utf8')
+    const payload = JSON.parse(raw)
+    return isUsable(payload) ? payload : null
+  } catch {
+    return null
+  }
+}
+
+// 수집된 스냅샷을 읽는다. 없거나 7일 이상 오래되면 null → 호출부에서 샘플로 폴백.
+async function getSnapshot() {
+  return (await fromBlobs()) || (await fromLocalFile())
 }
 
 // 스냅샷 또는 샘플 + 출처 메타데이터를 함께 반환

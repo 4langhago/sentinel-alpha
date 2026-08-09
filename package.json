@@ -12,7 +12,8 @@
     "typecheck": "tsc --noEmit",
     "deploy:firebase": "npm run build && firebase deploy --only hosting",
     "dev:api": "node scripts/dev-api.mjs",
-    "dev:all": "node scripts/dev-api.mjs & vite"
+    "dev:all": "node scripts/dev-api.mjs & vite",
+    "collect": "node scripts/collect-local.mjs"
   },
   "dependencies": {
     "@netlify/blobs": "^8.2.0",
