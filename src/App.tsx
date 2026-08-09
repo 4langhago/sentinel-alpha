@@ -1,5 +1,5 @@
 import React, { Suspense, lazy, Component, ErrorInfo, ReactNode } from 'react'
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
 import Navigation from './components/Navigation'
 import Footer from './components/Footer'
 import AuthModal from './components/AuthModal'
@@ -12,7 +12,7 @@ const HomePage       = lazy(() => import('./pages/HomePage'))
 const SearchPage     = lazy(() => import('./pages/SearchPage'))
 const FavoritesPage  = lazy(() => import('./pages/FavoritesPage'))
 const CalculatorPage = lazy(() => import('./pages/CalculatorPage'))
-const DetailPage     = lazy(() => import('./pages/DetailPage'))
+const ComplexPage    = lazy(() => import('./pages/ComplexPage'))
 
 const PageLoader = () => (
   <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-indigo-50">
@@ -68,7 +68,10 @@ function App() {
                     <Route path="/search"      element={<SearchPage />} />
                     <Route path="/favorites"   element={<FavoritesPage />} />
                     <Route path="/calculator"  element={<CalculatorPage />} />
-                    <Route path="/detail/:id"  element={<DetailPage />} />
+                    <Route path="/complex/:name" element={<ComplexPage />} />
+                    {/* 구 경매 상세 경로로 들어온 링크는 검색으로 흘려보낸다 */}
+                    <Route path="/detail/:id"  element={<Navigate to="/search" replace />} />
+                    <Route path="*"            element={<Navigate to="/" replace />} />
                   </Routes>
                 </Suspense>
               </main>

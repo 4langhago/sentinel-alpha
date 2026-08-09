@@ -1,441 +1,224 @@
-import React, { useState } from 'react'
-import { Calculator, TrendingUp, DollarSign, Home, Percent, Calendar, AlertCircle, Check, Search } from 'lucide-react'
-import { calculateInvestment, formatCurrency, formatPercent, CalculatorInputs, CalculatorResults } from '../utils/calculator'
-import RegionSelector from '../components/RegionSelector'
-import AmountRangeSelector, { AmountRange } from '../components/AmountRangeSelector'
-import auctionApi from '../services/auctionApi'
+import { useEffect, useState } from 'react'
+import { Calculator, TrendingUp, DollarSign, Home, Percent, Search, AlertCircle } from 'lucide-react'
+import {
+  calculateInvestment,
+  formatCurrency,
+  formatPercent,
+  CalculatorInputs,
+  CalculatorResults,
+} from '../utils/calculator'
+import { tradeApi } from '../services/tradeApi'
+import { ComplexDetail, formatPrice } from '../types/trade'
+
+const FIELDS: { key: keyof CalculatorInputs; label: string; unit: '원' | '%'; hint?: string }[] = [
+  { key: 'marketPrice', label: '현재 시세', unit: '원', hint: '실거래 중위가를 불러올 수 있습니다' },
+  { key: 'purchasePrice', label: '매수가', unit: '원' },
+  { key: 'renovationCost', label: '수리비', unit: '원' },
+  { key: 'acquisitionTax', label: '취득세', unit: '원' },
+  { key: 'brokerageFee', label: '중개수수료', unit: '원' },
+  { key: 'monthlyRent', label: '월 임대료', unit: '원' },
+  { key: 'managementFee', label: '월 관리비', unit: '원' },
+  { key: 'vacancyRate', label: '공실률', unit: '%' },
+  { key: 'taxRate', label: '임대소득 세율', unit: '%' },
+]
 
 const CalculatorPage = () => {
   const [inputs, setInputs] = useState<CalculatorInputs>({
-    propertyPrice: 650000000,
-    auctionPrice: 500000000,
-    renovationCost: 20000000,
-    acquisitionTax: 15000000,
-    brokerageFee: 5000000,
-    monthlyRent: 2000000,
+    marketPrice: 650_000_000,
+    purchasePrice: 600_000_000,
+    renovationCost: 20_000_000,
+    acquisitionTax: 15_000_000,
+    brokerageFee: 5_000_000,
+    monthlyRent: 2_000_000,
     vacancyRate: 5,
-    managementFee: 100000,
-    taxRate: 15
+    managementFee: 100_000,
+    taxRate: 15,
   })
-
   const [results, setResults] = useState<CalculatorResults | null>(null)
-  const [selectedRegions, setSelectedRegions] = useState<string[]>(['ulsan'])
-  const [investmentRange, setInvestmentRange] = useState<AmountRange>({ min: 0, max: 500000000 })
-  const [searchResults, setSearchResults] = useState<any[]>([])
-  const [isLoading, setIsLoading] = useState(false)
 
-  const calculateResults = () => {
+  // 단지 시세 불러오기
+  const [keyword, setKeyword] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [loaded, setLoaded] = useState<ComplexDetail | null>(null)
+  const [loadError, setLoadError] = useState('')
+
+  useEffect(() => {
     setResults(calculateInvestment(inputs))
-  }
-
-  React.useEffect(() => {
-    calculateResults()
   }, [inputs])
 
-  const handleInputChange = (field: keyof CalculatorInputs, value: string | number) => {
-    setInputs(prev => ({
+  const setField = (key: keyof CalculatorInputs, value: string) =>
+    setInputs((prev) => ({ ...prev, [key]: Number(value.replace(/[^0-9.]/g, '')) || 0 }))
+
+  const loadComplex = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const name = keyword.trim()
+    if (!name) return
+    setLoading(true)
+    setLoadError('')
+    const detail = await tradeApi.complex(name)
+    setLoading(false)
+    if (!detail) {
+      setLoaded(null)
+      setLoadError(`'${name}' 거래 내역을 찾을 수 없습니다. 단지명을 정확히 입력해 보세요.`)
+      return
+    }
+    setLoaded(detail)
+    // 중위 실거래가를 시세·매수가 기준값으로 채운다.
+    setInputs((prev) => ({
       ...prev,
-      [field]: typeof value === 'string' ? Number(value) || 0 : value
+      marketPrice: detail.median_price,
+      purchasePrice: detail.median_price,
     }))
   }
 
-  const handleSearchAuctions = async () => {
-    setIsLoading(true)
-    try {
-      const result = await auctionApi.searchAuctions({
-        regions: selectedRegions,
-        amountRange: investmentRange
-      })
-      setSearchResults(result.items)
-    } catch (error) {
-      console.error('검색 실패:', error)
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  const formatYears = (value: number) => {
-    return `${value.toFixed(1)}년`
-  }
-
-
   return (
-    <div className="space-y-6">
-      {/* Header */}
+    <div className="container mx-auto px-4 py-8 space-y-8">
       <div className="text-center">
-        <h2 className="text-3xl font-bold text-gray-900 mb-2 flex items-center justify-center space-x-2">
-          <Calculator className="w-8 h-8 text-primary-600" />
-          <span>투자 수익 계산기</span>
-        </h2>
-        <p className="text-gray-600">
-          경매 물건의 투자 수익성을 정확하게 분석하세요
+        <h1 className="text-2xl md:text-3xl font-black text-gray-900 dark:text-white mb-2 flex items-center justify-center gap-2">
+          <Calculator className="w-7 h-7 text-violet-600" />
+          투자 수익 계산기
+        </h1>
+        <p className="text-gray-500 dark:text-gray-400 text-sm">
+          실거래 시세를 기준으로 매수 후 임대 수익률을 계산합니다.
         </p>
       </div>
 
-      <div className="grid lg:grid-cols-3 gap-6">
-        {/* Search Filters */}
-        <div className="space-y-6">
-          <div className="card">
-            <RegionSelector 
-              selectedRegions={selectedRegions}
-              onRegionChange={setSelectedRegions}
+      {/* 단지 시세 불러오기 */}
+      <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 p-5">
+        <h2 className="font-bold text-gray-900 dark:text-white mb-3">단지 시세로 채우기</h2>
+        <form onSubmit={loadComplex} className="flex gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              value={keyword}
+              onChange={(e) => setKeyword(e.target.value)}
+              placeholder="단지명 입력 (예: 은마, 반포자이)"
+              className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
             />
           </div>
-          
-          <div className="card">
-            <AmountRangeSelector
-              value={investmentRange}
-              onChange={setInvestmentRange}
-            />
-          </div>
-          
           <button
-            onClick={handleSearchAuctions}
-            disabled={isLoading || selectedRegions.length === 0}
-            className="w-full btn btn-primary flex items-center justify-center space-x-2"
+            type="submit"
+            disabled={loading}
+            className="px-5 py-2.5 rounded-xl bg-violet-600 text-white text-sm font-semibold hover:bg-violet-700 disabled:opacity-60"
           >
-            <Search className="w-5 h-5" />
-            <span>{isLoading ? '검색 중...' : '경매 물건 검색'}</span>
+            {loading ? '조회 중...' : '불러오기'}
           </button>
-          
-          {/* Search Results */}
-          {searchResults.length > 0 && (
-            <div className="card">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">검색 결과</h3>
-              <div className="space-y-3">
-                {searchResults.map((item) => (
-                  <div key={item.id} className="p-3 border border-gray-200 rounded-lg hover:border-primary-300 transition-colors">
-                    <div className="flex space-x-3">
-                      <img
-                        src={item.images && item.images.length > 0 ? item.images[0] : 'https://picsum.photos/seed/default-property/100/100.jpg'}
-                        alt={item.description}
-                        className="w-16 h-16 object-cover rounded-lg flex-shrink-0"
-                        onError={(e) => {
-                          e.currentTarget.src = 'https://picsum.photos/seed/fallback-property/100/100.jpg'
-                        }}
-                      />
-                      <div className="flex-1">
-                        <div className="font-medium text-gray-900">{item.address}</div>
-                        <div className="text-sm text-gray-600">{item.description}</div>
-                        <div className="text-sm font-medium text-primary-600 mt-1">
-                          최저 입찰가: {formatCurrency(item.minimumBid)}
-                        </div>
-                      </div>
+        </form>
+
+        {loadError && (
+          <p className="mt-3 text-sm text-rose-600 dark:text-rose-400 flex items-center gap-1.5">
+            <AlertCircle className="w-4 h-4" />
+            {loadError}
+          </p>
+        )}
+        {loaded && (
+          <p className="mt-3 text-sm text-emerald-700 dark:text-emerald-400">
+            <span className="font-semibold">{loaded.name}</span> ({loaded.region_name}) 중위 실거래가{' '}
+            <span className="font-semibold">{formatPrice(loaded.median_price)}</span>를 시세·매수가에
+            채웠습니다.
+          </p>
+        )}
+      </div>
+
+      <div className="grid lg:grid-cols-2 gap-6">
+        {/* 입력 */}
+        <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 p-6">
+          <h2 className="font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+            <Home className="w-5 h-5 text-violet-600" />
+            입력값
+          </h2>
+          <div className="space-y-4">
+            {FIELDS.map((f) => (
+              <div key={f.key}>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  {f.label}
+                  {f.hint && <span className="text-xs text-gray-400 font-normal ml-2">{f.hint}</span>}
+                </label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={inputs[f.key].toLocaleString()}
+                    onChange={(e) => setField(f.key, e.target.value)}
+                    className="w-full pr-12 pl-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white text-sm text-right focus:outline-none focus:ring-2 focus:ring-violet-500"
+                  />
+                  <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm text-gray-400">
+                    {f.unit}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* 결과 */}
+        <div className="space-y-4">
+          {results && (
+            <>
+              <div className="bg-gradient-to-br from-violet-600 to-indigo-600 rounded-2xl p-6 text-white">
+                <p className="text-white/70 text-sm mb-1">총 투자금</p>
+                <p className="text-3xl font-black mb-4">{formatCurrency(results.totalInvestment)}</p>
+                <div className="grid grid-cols-2 gap-4 pt-4 border-t border-white/20">
+                  <div>
+                    <p className="text-white/70 text-xs mb-0.5">시세 대비 손익</p>
+                    <p className="text-lg font-bold">{formatCurrency(results.expectedProfit)}</p>
+                  </div>
+                  <div>
+                    <p className="text-white/70 text-xs mb-0.5">손익률</p>
+                    <p className="text-lg font-bold">{formatPercent(results.profitRate)}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {[
+                  {
+                    label: '월 순수입',
+                    value: formatCurrency(results.monthlyIncome),
+                    Icon: DollarSign,
+                    note: '공실·관리비 반영',
+                  },
+                  {
+                    label: '세후 연 수익률',
+                    value: formatPercent(results.annualYield),
+                    Icon: Percent,
+                    note: '총투자금 대비',
+                  },
+                  {
+                    label: '원금 회수 기간',
+                    value:
+                      results.breakEvenPoint > 0
+                        ? `${(results.breakEvenPoint / 12).toFixed(1)}년`
+                        : '회수 불가',
+                    Icon: TrendingUp,
+                    note:
+                      results.breakEvenPoint > 0 ? '임대 순수입 기준' : '월 순수입이 0 이하입니다',
+                  },
+                  {
+                    label: '연 임대수입',
+                    value: formatCurrency(results.monthlyIncome * 12),
+                    Icon: DollarSign,
+                    note: '세전',
+                  },
+                ].map((c) => (
+                  <div
+                    key={c.label}
+                    className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 p-5"
+                  >
+                    <div className="flex items-center gap-2 mb-2">
+                      <c.Icon className="w-4 h-4 text-violet-600" />
+                      <p className="text-sm text-gray-500 dark:text-gray-400">{c.label}</p>
                     </div>
+                    <p className="text-xl font-black text-gray-900 dark:text-white">{c.value}</p>
+                    <p className="text-xs text-gray-400 mt-1">{c.note}</p>
                   </div>
                 ))}
               </div>
-            </div>
-          )}
-        </div>
-        {/* Input Section */}
-        <div className="space-y-6">
-          {/* Property Information */}
-          <div className="card">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-              <Home className="w-5 h-5 mr-2" />
-              부동산 정보
-            </h3>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  시장 가치 (감정가)
-                </label>
-                <input
-                  type="number"
-                  value={inputs.propertyPrice}
-                  onChange={(e) => handleInputChange('propertyPrice', e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                />
-                <div className="text-sm text-gray-500 mt-1">
-                  {formatCurrency(inputs.propertyPrice)}
-                </div>
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  낙찰 예상가
-                </label>
-                <input
-                  type="number"
-                  value={inputs.auctionPrice}
-                  onChange={(e) => handleInputChange('auctionPrice', e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                />
-                <div className="text-sm text-gray-500 mt-1">
-                  {formatCurrency(inputs.auctionPrice)}
-                </div>
-              </div>
-            </div>
-          </div>
 
-          {/* Additional Costs */}
-          <div className="card">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-              <DollarSign className="w-5 h-5 mr-2" />
-              추가 비용
-            </h3>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  리모델링 비용
-                </label>
-                <input
-                  type="number"
-                  value={inputs.renovationCost}
-                  onChange={(e) => handleInputChange('renovationCost', e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                />
-                <div className="text-sm text-gray-500 mt-1">
-                  {formatCurrency(inputs.renovationCost)}
-                </div>
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  취득세
-                </label>
-                <input
-                  type="number"
-                  value={inputs.acquisitionTax}
-                  onChange={(e) => handleInputChange('acquisitionTax', e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                />
-                <div className="text-sm text-gray-500 mt-1">
-                  {formatCurrency(inputs.acquisitionTax)}
-                </div>
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  중개수수료
-                </label>
-                <input
-                  type="number"
-                  value={inputs.brokerageFee}
-                  onChange={(e) => handleInputChange('brokerageFee', e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                />
-                <div className="text-sm text-gray-500 mt-1">
-                  {formatCurrency(inputs.brokerageFee)}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Rental Information */}
-          <div className="card">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-              <Calendar className="w-5 h-5 mr-2" />
-              임대 수익 정보
-            </h3>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  월 예상 임대료
-                </label>
-                <input
-                  type="number"
-                  value={inputs.monthlyRent}
-                  onChange={(e) => handleInputChange('monthlyRent', e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                />
-                <div className="text-sm text-gray-500 mt-1">
-                  {formatCurrency(inputs.monthlyRent)}
-                </div>
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  공실률 (%)
-                </label>
-                <input
-                  type="number"
-                  value={inputs.vacancyRate}
-                  onChange={(e) => handleInputChange('vacancyRate', e.target.value)}
-                  min="0"
-                  max="100"
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  월 관리비
-                </label>
-                <input
-                  type="number"
-                  value={inputs.managementFee}
-                  onChange={(e) => handleInputChange('managementFee', e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                />
-                <div className="text-sm text-gray-500 mt-1">
-                  {formatCurrency(inputs.managementFee)}
-                </div>
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  소득세율 (%)
-                </label>
-                <input
-                  type="number"
-                  value={inputs.taxRate}
-                  onChange={(e) => handleInputChange('taxRate', e.target.value)}
-                  min="0"
-                  max="100"
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Results Section */}
-        <div className="space-y-6">
-          {results && (
-            <>
-              {/* Summary */}
-              <div className="card bg-gradient-to-r from-primary-600 to-primary-700 text-white">
-                <h3 className="text-lg font-semibold mb-4 flex items-center">
-                  <TrendingUp className="w-5 h-5 mr-2" />
-                  투자 요약
-                </h3>
-                <div className="space-y-4">
-                  <div className="flex justify-between items-center">
-                    <span>총 투자금액</span>
-                    <span className="text-xl font-bold">
-                      {formatCurrency(results.totalInvestment)}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span>예상 차익</span>
-                    <span className={`text-xl font-bold ${results.expectedProfit >= 0 ? 'text-green-300' : 'text-red-300'}`}>
-                      {formatCurrency(results.expectedProfit)}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span>차익률</span>
-                    <span className={`text-xl font-bold ${results.profitRate >= 0 ? 'text-green-300' : 'text-red-300'}`}>
-                      {formatPercent(results.profitRate)}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Detailed Results */}
-              <div className="card">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-                  <Percent className="w-5 h-5 mr-2" />
-                  상세 분석
-                </h3>
-                <div className="space-y-4">
-                  <div className="flex justify-between items-center py-3 border-b">
-                    <div>
-                      <div className="font-medium text-gray-900">월 순수익</div>
-                      <div className="text-sm text-gray-500">공실률 및 관리비 반영</div>
-                    </div>
-                    <div className="text-right">
-                      <div className="font-bold text-primary-600">
-                        {formatCurrency(results.monthlyIncome)}
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div className="flex justify-between items-center py-3 border-b">
-                    <div>
-                      <div className="font-medium text-gray-900">연간 수익률</div>
-                      <div className="text-sm text-gray-500">세후 기준</div>
-                    </div>
-                    <div className="text-right">
-                      <div className="font-bold text-primary-600">
-                        {formatPercent(results.annualYield)}
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div className="flex justify-between items-center py-3">
-                    <div>
-                      <div className="font-medium text-gray-900">회수 기간</div>
-                      <div className="text-sm text-gray-500">투자금 회수까지</div>
-                    </div>
-                    <div className="text-right">
-                      <div className="font-bold text-primary-600">
-                        {formatYears(results.breakEvenPoint)}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Investment Advice */}
-              <div className="card">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-                  <AlertCircle className="w-5 h-5 mr-2" />
-                  투자 의견
-                </h3>
-                <div className="space-y-3">
-                  {results.expectedProfit > 0 && results.profitRate > 10 && (
-                    <div className="flex items-start space-x-2">
-                      <Check className="w-5 h-5 text-green-500 mt-0.5" />
-                      <div>
-                        <div className="font-medium text-gray-900">우량 투자 기회</div>
-                        <div className="text-sm text-gray-600">
-                          예상 차익률이 10% 이상으로 매우 좋은 투자 기회입니다.
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                  
-                  {results.expectedProfit > 0 && results.profitRate > 5 && results.profitRate <= 10 && (
-                    <div className="flex items-start space-x-2">
-                      <Check className="w-5 h-5 text-blue-500 mt-0.5" />
-                      <div>
-                        <div className="font-medium text-gray-900">양호한 투자</div>
-                        <div className="text-sm text-gray-600">
-                          안정적인 수익을 기대할 수 있는 투자 기회입니다.
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                  
-                  {results.annualYield > 5 && (
-                    <div className="flex items-start space-x-2">
-                      <Check className="w-5 h-5 text-green-500 mt-0.5" />
-                      <div>
-                        <div className="font-medium text-gray-900">임대 수익성 우수</div>
-                        <div className="text-sm text-gray-600">
-                          연간 수익률이 5% 이상으로 임대 수익성이 좋습니다.
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                  
-                  {results.breakEvenPoint > 15 && (
-                    <div className="flex items-start space-x-2">
-                      <AlertCircle className="w-5 h-5 text-yellow-500 mt-0.5" />
-                      <div>
-                        <div className="font-medium text-gray-900">회수 기간 주의</div>
-                        <div className="text-sm text-gray-600">
-                          투자금 회수 기간이 15년 이상으로 장기 투자가 필요합니다.
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                  
-                  {results.expectedProfit < 0 && (
-                    <div className="flex items-start space-x-2">
-                      <AlertCircle className="w-5 h-5 text-red-500 mt-0.5" />
-                      <div>
-                        <div className="font-medium text-gray-900">투자 주의 필요</div>
-                        <div className="text-sm text-gray-600">
-                          예상 차익이 음수로 투자 손실이 예상됩니다.
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
+              <p className="text-xs text-gray-400 dark:text-gray-500 leading-relaxed">
+                취득세·중개수수료는 직접 입력한 값을 그대로 사용합니다. 실제 세율은 주택 수·가격
+                구간에 따라 달라지므로 참고용으로만 사용하세요.
+              </p>
             </>
           )}
         </div>

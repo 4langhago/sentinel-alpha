@@ -1,105 +1,189 @@
-import React, { useState, useEffect, useCallback } from 'react'
-import SearchFilters from '../components/SearchFilters'
-import AuctionList from '../components/AuctionList'
-import { AuctionItem, SearchFilters as SearchFiltersType } from '../types/auction'
-import { mockAuctionItems } from '../data/mockData'
-import { useAuth } from '../contexts/AuthContext'
-import { auctionApi } from '../services/auctionApi'
-import { RefreshCw, Wifi, WifiOff } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
+import { SearchX, ChevronLeft, ChevronRight } from 'lucide-react'
+import TradeFilters from '../components/TradeFilters'
+import TradeCard from '../components/TradeCard'
+import DataSourceBadge from '../components/DataSourceBadge'
+import { useTrades } from '../hooks/useTrades'
+import { tradeApi } from '../services/tradeApi'
+import { TradeSearchParams, RegionStats, formatPrice } from '../types/trade'
 
 const SearchPage = () => {
-  const [auctions, setAuctions] = useState<AuctionItem[]>([])
-  const [loading, setLoading] = useState(false)
-  const [isApiConnected, setIsApiConnected] = useState<boolean | null>(null)
-  const [lastUpdated, setLastUpdated] = useState<string>('')
-  const { refreshUsage } = useAuth()
+  const [searchParams, setSearchParams] = useSearchParams()
 
-  const fetchAuctions = useCallback(async (params: {
-    region?: string
-    minPrice?: number
-    maxPrice?: number
-    propertyType?: string
-    page?: number
-    limit?: number
-  } = {}) => {
-    setLoading(true)
-    try {
-      const result = await auctionApi.searchAuctions({
-        regions: params.region ? [params.region] : [],
-        amountRange: {
-          min: params.minPrice ?? 0,
-          max: params.maxPrice ?? 2_000_000_000,
-        },
-        propertyTypes: params.propertyType && params.propertyType !== 'ALL'
-          ? [params.propertyType] : [],
-        page: params.page ?? 1,
-        limit: params.limit ?? 30,
-      })
-      setAuctions(result.items)
-      setIsApiConnected(true)
-      setLastUpdated(new Date().toLocaleString('ko-KR'))
-    } catch (err) {
-      console.warn('[SearchPage] API 호출 실패, mockData 사용:', err)
-      setAuctions(mockAuctionItems)
-      setIsApiConnected(false)
-    } finally {
-      setLoading(false)
-    }
-  }, [])
+  // URL 쿼리를 필터의 단일 진실 소스로 사용해 새로고침·공유에도 조건이 유지되게 한다.
+  const filters = useMemo<TradeSearchParams>(
+    () => ({
+      q: searchParams.get('q') || undefined,
+      sido: searchParams.get('sido') || undefined,
+      sggCode: searchParams.get('sgg') || undefined,
+      propertyType: (searchParams.get('type') as TradeSearchParams['propertyType']) || 'ALL',
+      dealType: (searchParams.get('deal') as TradeSearchParams['dealType']) || 'ALL',
+      minPrice: searchParams.get('minp') ? Number(searchParams.get('minp')) : undefined,
+      maxPrice: searchParams.get('maxp') ? Number(searchParams.get('maxp')) : undefined,
+      minArea: searchParams.get('mina') ? Number(searchParams.get('mina')) : undefined,
+      maxArea: searchParams.get('maxa') ? Number(searchParams.get('maxa')) : undefined,
+      buildYearMin: searchParams.get('by') ? Number(searchParams.get('by')) : undefined,
+      sort: (searchParams.get('sort') as TradeSearchParams['sort']) || 'recent',
+      page: Number(searchParams.get('page') || 1),
+      limit: 24,
+    }),
+    [searchParams]
+  )
 
+  const applyFilters = (next: TradeSearchParams) => {
+    const sp = new URLSearchParams()
+    if (next.q) sp.set('q', next.q)
+    if (next.sido) sp.set('sido', next.sido)
+    if (next.sggCode) sp.set('sgg', next.sggCode)
+    if (next.propertyType && next.propertyType !== 'ALL') sp.set('type', next.propertyType)
+    if (next.dealType && next.dealType !== 'ALL') sp.set('deal', next.dealType)
+    if (next.minPrice !== undefined) sp.set('minp', String(next.minPrice))
+    if (next.maxPrice !== undefined) sp.set('maxp', String(next.maxPrice))
+    if (next.minArea !== undefined) sp.set('mina', String(next.minArea))
+    if (next.maxArea !== undefined) sp.set('maxa', String(next.maxArea))
+    if (next.buildYearMin !== undefined) sp.set('by', String(next.buildYearMin))
+    if (next.sort && next.sort !== 'recent') sp.set('sort', next.sort)
+    if (next.page && next.page > 1) sp.set('page', String(next.page))
+    setSearchParams(sp)
+  }
+
+  const { items, total, totalPages, isLive, lastUpdate, fetchedAt, loading, error, refresh } =
+    useTrades(filters)
+
+  const [stats, setStats] = useState<RegionStats | null>(null)
   useEffect(() => {
-    fetchAuctions()
-    refreshUsage()
-  }, [fetchAuctions])
+    let alive = true
+    tradeApi
+      .stats({ sido: filters.sido, sggCode: filters.sggCode, q: filters.q })
+      .then((s) => alive && setStats(s))
+    return () => {
+      alive = false
+    }
+  }, [filters.sido, filters.sggCode, filters.q])
 
-  const handleSearch = (filters: SearchFiltersType) => {
-    const region = filters.address || (filters.courts.length > 0 ? filters.courts[0] : '')
-    const propertyType = filters.propertyTypes.length === 1 ? filters.propertyTypes[0] : 'ALL'
-    fetchAuctions({
-      region,
-      minPrice: filters.minInvestment || 0,
-      maxPrice: filters.maxInvestment || 2_000_000_000,
-      propertyType,
-    })
+  const page = filters.page || 1
+  const goPage = (p: number) => {
+    applyFilters({ ...filters, page: p })
+    window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="text-center mb-6">
-        <h2 className="text-3xl font-bold text-gray-900 mb-2">
-          전국 법원 경매 물건 검색
-        </h2>
-        <p className="text-gray-600">
-          원하는 조건으로 경매 물건을 찾아보세요
+    <div className="container mx-auto px-4 py-8 space-y-6">
+      <div>
+        <h1 className="text-2xl md:text-3xl font-black text-gray-900 dark:text-white mb-1">실거래 검색</h1>
+        <p className="text-gray-500 dark:text-gray-400 text-sm">
+          국토교통부에 신고된 아파트·오피스텔 실제 거래 내역을 조건별로 찾아봅니다.
         </p>
-        <div className="flex items-center justify-center gap-3 mt-3 text-sm">
-          {isApiConnected === true && (
-            <span className="flex items-center gap-1 text-green-600">
-              <Wifi size={14} />
-              실시간 데이터 연결됨
-              {lastUpdated && <span className="text-gray-400 ml-1">· {lastUpdated} 기준</span>}
-            </span>
-          )}
-          {isApiConnected === false && (
-            <span className="flex items-center gap-1 text-amber-600">
-              <WifiOff size={14} />
-              오프라인 데이터 사용 중
-            </span>
-          )}
-          <button
-            onClick={() => fetchAuctions()}
-            className="flex items-center gap-1 text-blue-600 hover:text-blue-800 transition-colors"
-          >
-            <RefreshCw size={14} />
-            새로고침
-          </button>
-        </div>
+        <DataSourceBadge
+          isLive={isLive}
+          lastUpdate={lastUpdate}
+          fetchedAt={fetchedAt}
+          loading={loading}
+          onRefresh={refresh}
+          className="mt-3"
+        />
       </div>
 
-      <div className="space-y-6">
-        <SearchFilters onSearch={handleSearch} />
-        <AuctionList auctions={auctions} loading={loading} />
+      <TradeFilters value={filters} onChange={applyFilters} />
+
+      {/* 현재 조건의 시세 요약 */}
+      {stats && stats.count > 0 && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {[
+            { label: '매매 거래', value: `${stats.count.toLocaleString()}건` },
+            { label: '중위가', value: formatPrice(stats.median_price) },
+            {
+              label: '중위 평당가',
+              value: `${Math.round(stats.median_per_pyeong / 10000).toLocaleString()}만원`,
+            },
+            { label: '최고가', value: formatPrice(stats.max_price) },
+          ].map((s) => (
+            <div
+              key={s.label}
+              className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 px-4 py-3"
+            >
+              <p className="text-[11px] text-gray-500 dark:text-gray-400">{s.label}</p>
+              <p className="text-base md:text-lg font-bold text-gray-900 dark:text-white">{s.value}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-gray-600 dark:text-gray-300">
+          총 <span className="font-bold text-violet-600 dark:text-violet-400">{total.toLocaleString()}</span>건
+          {totalPages > 1 && (
+            <span className="text-gray-400 ml-2">
+              ({page} / {totalPages} 페이지)
+            </span>
+          )}
+        </p>
       </div>
+
+      {error && (
+        <div className="bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/30 text-rose-700 dark:text-rose-400 rounded-xl px-4 py-3 text-sm">
+          {error}
+        </div>
+      )}
+
+      {loading && items.length === 0 ? (
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {Array.from({ length: 6 }, (_, i) => (
+            <div key={i} className="h-48 rounded-2xl bg-gray-100 dark:bg-gray-800 animate-pulse" />
+          ))}
+        </div>
+      ) : items.length === 0 ? (
+        <div className="text-center py-20 bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700">
+          <SearchX className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+          <p className="text-gray-700 dark:text-gray-200 font-semibold mb-1">조건에 맞는 거래가 없습니다</p>
+          <p className="text-gray-500 dark:text-gray-400 text-sm">검색어나 필터를 넓혀보세요.</p>
+        </div>
+      ) : (
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {items.map((item) => (
+            <TradeCard key={item.id} item={item} medianPerPyeong={stats?.median_per_pyeong} />
+          ))}
+        </div>
+      )}
+
+      {totalPages > 1 && (
+        <div className="flex items-center justify-center gap-2 pt-4">
+          <button
+            onClick={() => goPage(page - 1)}
+            disabled={page <= 1}
+            className="p-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 disabled:opacity-40 hover:bg-gray-50 dark:hover:bg-gray-800"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+          {/* 현재 페이지 주변 5개만 노출 */}
+          {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+            const start = Math.max(1, Math.min(page - 2, totalPages - 4))
+            return start + i
+          })
+            .filter((p) => p >= 1 && p <= totalPages)
+            .map((p) => (
+              <button
+                key={p}
+                onClick={() => goPage(p)}
+                className={`w-9 h-9 rounded-lg text-sm font-semibold ${
+                  p === page
+                    ? 'bg-violet-600 text-white'
+                    : 'border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'
+                }`}
+              >
+                {p}
+              </button>
+            ))}
+          <button
+            onClick={() => goPage(page + 1)}
+            disabled={page >= totalPages}
+            className="p-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 disabled:opacity-40 hover:bg-gray-50 dark:hover:bg-gray-800"
+          >
+            <ChevronRight className="w-4 h-4" />
+          </button>
+        </div>
+      )}
     </div>
   )
 }

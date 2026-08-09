@@ -1,7 +1,7 @@
 {
-  "name": "auction-insight",
+  "name": "sise-insight",
   "version": "1.0.0",
-  "description": "AI 기반 한국 법원 경매 분석 플랫폼",
+  "description": "국토교통부 실거래가 기반 부동산 시세 분석 플랫폼",
   "private": true,
   "type": "module",
   "scripts": {
@@ -10,7 +10,9 @@
     "build:prod": "NODE_ENV=production vite build --mode production",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "deploy:firebase": "npm run build && firebase deploy --only hosting"
+    "deploy:firebase": "npm run build && firebase deploy --only hosting",
+    "dev:api": "node scripts/dev-api.mjs",
+    "dev:all": "node scripts/dev-api.mjs & vite"
   },
   "dependencies": {
     "@netlify/blobs": "^8.2.0",
