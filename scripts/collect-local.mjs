@@ -11,7 +11,7 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { collectTrades } from '../netlify/functions/lib/collect.mjs'
-import { buildShards } from '../netlify/functions/lib/storage.mjs'
+import { buildShards, readAllItems, mergeItems } from '../netlify/functions/lib/storage.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ROOT = resolve(__dirname, '..')
@@ -100,9 +100,25 @@ const main = async () => {
     return fail('', '수집된 거래가 0건입니다. 저장하지 않습니다.')
   }
 
+  // 일부 지역만 수집했다면 기존 데이터를 덮어쓰지 않도록 병합한다.
+  // (--sido 로 범위를 좁혔을 때는 기본으로 병합, --replace 로 전체 교체 가능)
+  const replace = args.includes('--replace')
+  let finalPayload = payload
+  if (!replace && sidoFilter) {
+    const existing = await readAllItems()
+    if (existing.length > 0) {
+      const merged = mergeItems(existing, payload.items)
+      console.log(
+        `\n기존 ${existing.length.toLocaleString()}건과 병합 → ` +
+          `${merged.length.toLocaleString()}건 (신규 ${(merged.length - existing.length).toLocaleString()}건)`
+      )
+      finalPayload = { ...payload, items: merged }
+    }
+  }
+
   // 조회용 샤드로 쪼개 저장한다. 한 파일에 몰아두면 요청마다 전체를 파싱하게 된다.
   const outDir = resolve(ROOT, 'netlify/functions/data')
-  const shards = buildShards(payload)
+  const shards = buildShards(finalPayload)
   let bytes = 0
   for (const { key, value } of shards) {
     const path = resolve(outDir, key)
@@ -125,7 +141,7 @@ const main = async () => {
 
   // 매매/전월세 구성을 함께 보여준다. 구분 없이 금액만 찍으면
   // 월세 보증금이 매매가처럼 보여 오해를 부른다.
-  const count = (fn) => payload.items.filter(fn).length
+  const count = (fn) => finalPayload.items.filter(fn).length
   console.log(
     `\n구성: 매매 ${count((i) => i.deal_type === 'TRADE')}건 · ` +
       `전세 ${count((i) => i.rent_type === 'JEONSE')}건 · ` +
@@ -152,12 +168,12 @@ const main = async () => {
     )
   }
 
-  const trades = payload.items.filter((i) => i.deal_type === 'TRADE')
+  const trades = finalPayload.items.filter((i) => i.deal_type === 'TRADE')
   if (trades.length) {
     console.log('\n매매 샘플 3건:')
     trades.slice(0, 3).forEach((it) => console.log(describe(it)))
   }
-  const rents = payload.items.filter((i) => i.deal_type === 'RENT')
+  const rents = finalPayload.items.filter((i) => i.deal_type === 'RENT')
   if (rents.length) {
     console.log('\n전월세 샘플 3건:')
     rents.slice(0, 3).forEach((it) => console.log(describe(it)))

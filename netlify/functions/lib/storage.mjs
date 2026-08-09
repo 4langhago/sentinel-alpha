@@ -166,6 +166,30 @@ export async function readShard(key) {
   }
 }
 
+/**
+ * 저장된 전체 거래를 시군구 샤드에서 되짚어 복원한다.
+ * 시군구 샤드는 잘라내지 않고 전부 담고 있으므로 여기서 원본 전체가 나온다.
+ * 일부 지역만 추가 수집할 때 기존 데이터를 잃지 않고 병합하는 데 쓴다.
+ */
+export async function readAllItems() {
+  const idx = await readShard('index.json')
+  if (!idx?.sgg) return []
+  const all = []
+  for (const code of Object.keys(idx.sgg)) {
+    const shard = await readShard(`sgg/${code}.json`)
+    if (shard?.items) all.push(...shard.items)
+  }
+  return all
+}
+
+/** id 기준으로 두 목록을 병합한다. 새 데이터가 기존 것을 덮어쓴다. */
+export function mergeItems(existing, incoming) {
+  const map = new Map()
+  for (const it of existing) map.set(it.id, it)
+  for (const it of incoming) map.set(it.id, it)
+  return [...map.values()].sort(byDateDesc)
+}
+
 /** 메타데이터 + 사전 계산 통계. 오래됐거나 없으면 null. */
 export async function readIndex() {
   const idx = await readShard('index.json')

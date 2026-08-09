@@ -3,7 +3,8 @@ import { fetchTrades, recentMonths, SERVICES } from './molit.mjs'
 import { ALL_SGG } from './regionCodes.mjs'
 
 // 무료 개발계정은 보통 일 1,000회 제한이라 여유를 두고 상한을 건다.
-export const DEFAULT_MAX_CALLS = 700
+// 수도권+부산·대구·울산 91개 시군구 × 3개월 × 3서비스 = 819회를 커버하는 값.
+export const DEFAULT_MAX_CALLS = 900
 export const DEFAULT_MONTHS = 3
 
 // 호출 예산을 먼저 배분받는 지역 (수도권·광역시)

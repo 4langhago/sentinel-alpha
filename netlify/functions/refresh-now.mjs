@@ -30,7 +30,7 @@ export default async (req) => {
 
   const url = new URL(req.url)
   const months = Math.min(12, Math.max(1, Number(url.searchParams.get('months') || 3)))
-  const maxCalls = Math.min(1000, Math.max(1, Number(url.searchParams.get('max_calls') || 700)))
+  const maxCalls = Math.min(1000, Math.max(1, Number(url.searchParams.get('max_calls') || 900)))
   const sidoParam = url.searchParams.get('sido')
   const sidoFilter = sidoParam ? sidoParam.split(',').map((s) => s.trim()).filter(Boolean) : undefined
 
