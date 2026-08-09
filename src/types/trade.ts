@@ -109,6 +109,16 @@ export interface SidoRegion {
   sggs: { code: string; name: string }[]
 }
 
+/** 지도 타일 히트맵용 배치 집계 1건 (시도 또는 시군구 단위) */
+export interface RegionTileStat {
+  /** 시도명 또는 시군구 법정동코드 */
+  code: string
+  name: string
+  count: number
+  median_price: number
+  median_per_pyeong: number
+}
+
 export interface TradeSearchParams {
   q?: string
   sido?: string

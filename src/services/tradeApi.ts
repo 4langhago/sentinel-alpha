@@ -7,6 +7,7 @@ import {
   RegionStats,
   ComplexDetail,
   SidoRegion,
+  RegionTileStat,
 } from '../types/trade'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api'
@@ -94,6 +95,21 @@ export const tradeApi = {
     } catch {
       return []
     }
+  },
+
+  /**
+   * 지도 타일 히트맵용 배치 집계. 시도 전체(level='sido') 또는 특정 시도의
+   * 시군구 전체(level='sgg' + sido)를 한 번에 반환한다. 데이터가 없는 지역은
+   * 응답 배열에서 빠지므로, 화면은 목록에 없는 지역을 "집계 준비 중"으로 표시하면 된다.
+   */
+  regionStats: async (
+    params: { level: 'sido' } | { level: 'sgg'; sido: string }
+  ): Promise<RegionTileStat[]> => {
+    const res = await axios.get(`${API_BASE_URL}/regions/stats`, {
+      params: params.level === 'sgg' ? { level: 'sgg', sido: params.sido } : { level: 'sido' },
+      timeout: 10_000,
+    })
+    return (res.data.regions || []) as RegionTileStat[]
   },
 
   health: async (): Promise<SystemHealth | null> => {

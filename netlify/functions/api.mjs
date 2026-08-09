@@ -225,6 +225,47 @@ export default async (req) => {
     })
   }
 
+  if (path === '/regions/stats') {
+    // 지도 타일 히트맵용 배치 집계. index.sido/index.sgg에 이미 계산돼 있는
+    // 값을 그대로 모아 반환하므로 샤드를 읽지 않는다(개별 /stats 호출 N회를 1회로 대체).
+    const level = q.get('level') || 'sido'
+    if (!index) return json({ regions: [] })
+
+    if (level === 'sgg') {
+      const sido = q.get('sido') || ''
+      const def = REGIONS.find((r) => r.sido === sido)
+      if (!def) return json({ regions: [] })
+      const regions = def.sggs
+        .map(([code, name]) => {
+          const s = index.sgg?.[code]
+          if (!s) return null // 수집된 데이터가 없는 시군구 — 화면에서 "집계 준비 중"으로 처리
+          return {
+            code,
+            name,
+            count: s.count || 0,
+            median_price: s.median_price || 0,
+            median_per_pyeong: s.median_per_pyeong || 0,
+          }
+        })
+        .filter(Boolean)
+      return json({ regions })
+    }
+
+    // level === 'sido' (기본값): 전국 시도 전체
+    const regions = REGIONS.map((r) => {
+      const s = index.sido?.[r.sido]
+      if (!s) return null
+      return {
+        code: r.sido,
+        name: r.sido,
+        count: s.count || 0,
+        median_price: s.median_price || 0,
+        median_per_pyeong: s.median_per_pyeong || 0,
+      }
+    }).filter(Boolean)
+    return json({ regions })
+  }
+
   if (path === '/regions') {
     // 실제 데이터가 있는 지역만 노출해, 결과가 0건인 지역을 고르게 하지 않는다.
     const available = index ? new Set(Object.keys(index.sgg || {})) : null
