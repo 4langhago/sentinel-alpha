@@ -1,12 +1,20 @@
 import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { ArrowLeft, Building2, MapPin, Calendar, Heart, TrendingUp } from 'lucide-react'
+import { ArrowLeft, Building2, MapPin, Calendar, Heart, TrendingUp, ShieldAlert, Info } from 'lucide-react'
 import { tradeApi } from '../services/tradeApi'
 import { ComplexDetail, formatPrice, toPyeong, TrendPoint, PROPERTY_LABELS } from '../types/trade'
 import PriceTrendChart from '../components/PriceTrendChart'
 import DataSourceBadge from '../components/DataSourceBadge'
 import { useAuth } from '../contexts/AuthContext'
 import { isFavorite, toggleFavorite } from '../services/favoriteService'
+import { computeRiskScore, RiskGrade } from '../utils/riskScore'
+
+/** 리스크 등급별 배지 스타일 (낮음=안전 톤, 높음=경고 톤) */
+const RISK_GRADE_STYLE: Record<RiskGrade, { badge: string; bar: string }> = {
+  낮음: { badge: 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400', bar: 'bg-emerald-500' },
+  보통: { badge: 'bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400', bar: 'bg-amber-500' },
+  높음: { badge: 'bg-rose-50 dark:bg-rose-500/10 text-rose-700 dark:text-rose-400', bar: 'bg-rose-500' },
+}
 
 const median = (nums: number[]) => {
   if (!nums.length) return 0
@@ -92,6 +100,7 @@ const ComplexPage = () => {
 
   const trend = buildTrend(detail)
   const rents = detail.history.filter((h) => h.deal_type === 'RENT')
+  const risk = computeRiskScore(detail)
 
   return (
     <div className="container mx-auto px-4 py-8 space-y-8">
@@ -162,6 +171,62 @@ const ComplexPage = () => {
             <p className="text-lg md:text-xl font-black text-gray-900 dark:text-white">{s.value}</p>
           </div>
         ))}
+      </div>
+
+      {/* 리스크 스코어 */}
+      <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 p-6">
+        <div className="flex items-center gap-2 mb-4">
+          <ShieldAlert className="w-5 h-5 text-violet-600" />
+          <h2 className="font-bold text-gray-900 dark:text-white">데이터 기반 리스크 스코어</h2>
+        </div>
+
+        {!risk.available ? (
+          <p className="text-sm text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-900/40 rounded-xl px-4 py-3">
+            {risk.message}
+          </p>
+        ) : (
+          <div className="space-y-5">
+            <div className="flex items-center gap-4">
+              <div className="text-4xl font-black text-gray-900 dark:text-white">{risk.score}</div>
+              <div className="space-y-1">
+                <span
+                  className={`inline-block text-xs font-semibold rounded-full px-2.5 py-1 ${RISK_GRADE_STYLE[risk.grade].badge}`}
+                >
+                  리스크 {risk.grade}
+                </span>
+                <p className="text-xs text-gray-400 dark:text-gray-500">0(낮음) ~ 100(높음)</p>
+              </div>
+            </div>
+
+            {/* 근거 항목: 점수만 노출하지 않고 계산에 쓰인 요소를 모두 보여준다 */}
+            <ul className="space-y-3">
+              {risk.factors.map((f) => (
+                <li key={f.key} className="text-sm">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="font-medium text-gray-700 dark:text-gray-200">{f.label}</span>
+                    <span className="text-xs text-gray-400 dark:text-gray-500">
+                      {f.skipped ? '미반영' : `${f.contribution} / ${f.weight}점`}
+                    </span>
+                  </div>
+                  <div className="h-1.5 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden mb-1">
+                    <div
+                      className={`h-full rounded-full ${f.skipped ? 'bg-gray-300 dark:bg-gray-600' : RISK_GRADE_STYLE[risk.grade].bar}`}
+                      style={{ width: f.skipped ? '0%' : `${Math.round((f.contribution / f.weight) * 100)}%` }}
+                    />
+                  </div>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">{f.detail}</p>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        <p className="mt-5 pt-4 border-t border-gray-100 dark:border-gray-700 text-xs text-gray-400 dark:text-gray-500 flex items-start gap-1.5">
+          <Info className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+          <span>
+            이 점수는 실거래 데이터로 계산한 참고 지표이며, 투자 판단의 근거를 대신하지 않습니다. 최종 투자 결정과 그 책임은 이용자 본인에게 있습니다.
+          </span>
+        </p>
       </div>
 
       {/* 추이 */}
