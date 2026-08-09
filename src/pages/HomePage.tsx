@@ -410,7 +410,7 @@ const HomePage = () => {
   const carouselRef = useRef<HTMLDivElement>(null)
 
   // 실시간 경매 데이터 (60초 폴링 + 탭 활성화 시 갱신, API 미응답 시 mock 폴백)
-  const { items, total, isLive, lastUpdated } = useLiveAuctions()
+  const { items, total, isLive, lastSync, lastUpdated, loading, refresh } = useLiveAuctions()
   const hotAuctions = useMemo(() => toHotAuctions(items), [items])
   const categoryCounts = useMemo(() => {
     const counts: Record<string, number> = {}
@@ -581,14 +581,26 @@ const HomePage = () => {
                 이번 주 추천 경매
               </h2>
               <p className="text-gray-500 dark:text-gray-400 mt-1 flex items-center flex-wrap gap-x-2">
-                <span>대법원 데이터 기반 · AI 수익성·안전성 분석</span>
+                <span>
+                  {isLive ? '대법원 데이터 기반 · AI 수익성·안전성 분석' : 'AI 수익성·안전성 분석'}
+                </span>
                 <span className="inline-flex items-center space-x-1 text-xs">
                   <span className={`w-1.5 h-1.5 rounded-full ${isLive ? 'bg-green-500 animate-pulse' : 'bg-amber-400'}`} />
                   <span className={isLive ? 'text-green-600 dark:text-green-400' : 'text-amber-500'}>
-                    {isLive ? '실시간 연동' : '캐시 데이터'}
-                    {lastUpdated && ` · ${lastUpdated.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })} 업데이트`}
+                    {/* 실데이터가 아닐 때 '캐시'라고 쓰면 실제 물건인 줄 오인한다. 명시적으로 샘플이라고 표기. */}
+                    {isLive ? '실시간 연동' : '샘플 데이터 (실제 경매 물건 아님)'}
+                    {isLive && lastSync && ` · ${lastSync} 수집`}
+                    {lastUpdated &&
+                      ` · ${lastUpdated.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })} 조회`}
                   </span>
                 </span>
+                <button
+                  onClick={refresh}
+                  disabled={loading}
+                  className="text-xs text-violet-600 dark:text-violet-400 hover:underline disabled:opacity-50"
+                >
+                  {loading ? '새로고침 중...' : '새로고침'}
+                </button>
               </p>
             </div>
             <div className="hidden md:flex items-center space-x-2">

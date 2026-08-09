@@ -1,9 +1,18 @@
 import React, { useState } from 'react'
-import { X, Mail, Lock, User, Eye, EyeOff, LogIn, UserPlus } from 'lucide-react'
+import { X, Mail, Lock, User, Eye, EyeOff, LogIn, UserPlus, CheckCircle2 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 
 const AuthModal = () => {
-  const { showAuthModal, authModalTab, closeAuthModal, login, signup, openAuthModal } = useAuth()
+  const {
+    showAuthModal,
+    authModalTab,
+    closeAuthModal,
+    login,
+    signup,
+    loginWithGoogle,
+    resetPassword,
+    isCloudAuth,
+  } = useAuth()
 
   const [tab, setTab] = useState<'login' | 'signup'>(authModalTab)
   const [name, setName] = useState('')
@@ -11,11 +20,13 @@ const AuthModal = () => {
   const [password, setPassword] = useState('')
   const [showPw, setShowPw] = useState(false)
   const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
   const [loading, setLoading] = useState(false)
 
   React.useEffect(() => {
     setTab(authModalTab)
     setError('')
+    setNotice('')
     setName('')
     setEmail('')
     setPassword('')
@@ -26,6 +37,7 @@ const AuthModal = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
+    setNotice('')
     setLoading(true)
     try {
       if (tab === 'login') {
@@ -36,10 +48,31 @@ const AuthModal = () => {
         if (password.length < 6) { setError('비밀번호는 6자 이상이어야 합니다.'); return }
         const res = await signup(name, email, password)
         if (!res.ok) setError(res.error || '회원가입 실패')
+        else if (res.needsEmailConfirm) {
+          setNotice(`${email} 로 인증 메일을 보냈습니다. 메일의 링크를 클릭하면 가입이 완료됩니다.`)
+        }
       }
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleGoogle = async () => {
+    setError('')
+    const res = await loginWithGoogle()
+    if (!res.ok) setError(res.error || '구글 로그인에 실패했습니다.')
+  }
+
+  const handleForgotPassword = async () => {
+    setError('')
+    setNotice('')
+    if (!email.trim()) {
+      setError('비밀번호를 재설정할 이메일을 입력해 주세요.')
+      return
+    }
+    const res = await resetPassword(email)
+    if (!res.ok) setError(res.error || '재설정 메일 발송에 실패했습니다.')
+    else setNotice(`${email} 로 비밀번호 재설정 링크를 보냈습니다.`)
   }
 
   return (
@@ -147,6 +180,13 @@ const AuthModal = () => {
             </div>
           )}
 
+          {notice && (
+            <div className="bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-xl px-4 py-3 text-sm flex items-start space-x-2">
+              <CheckCircle2 className="w-4 h-4 mt-0.5 shrink-0" />
+              <span>{notice}</span>
+            </div>
+          )}
+
           <button
             type="submit"
             disabled={loading}
@@ -155,6 +195,41 @@ const AuthModal = () => {
             {tab === 'login' ? <LogIn className="w-4 h-4" /> : <UserPlus className="w-4 h-4" />}
             <span>{loading ? '처리 중...' : tab === 'login' ? '로그인' : '무료 가입'}</span>
           </button>
+
+          {isCloudAuth && (
+            <>
+              <div className="flex items-center space-x-3">
+                <div className="flex-1 h-px bg-gray-200" />
+                <span className="text-xs text-gray-400">또는</span>
+                <div className="flex-1 h-px bg-gray-200" />
+              </div>
+              <button
+                type="button"
+                onClick={handleGoogle}
+                className="w-full py-3 border border-gray-200 rounded-xl font-semibold text-gray-700 text-sm hover:bg-gray-50 transition-colors"
+              >
+                구글 계정으로 계속하기
+              </button>
+            </>
+          )}
+
+          {!isCloudAuth && (
+            <p className="text-center text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2">
+              현재 계정이 이 브라우저에만 저장됩니다. Supabase 설정 후 기기 간 로그인이 가능합니다.
+            </p>
+          )}
+
+          {tab === 'login' && isCloudAuth && (
+            <p className="text-center text-sm">
+              <button
+                type="button"
+                onClick={handleForgotPassword}
+                className="text-gray-500 hover:text-violet-600 hover:underline"
+              >
+                비밀번호를 잊으셨나요?
+              </button>
+            </p>
+          )}
 
           {tab === 'login' && (
             <p className="text-center text-sm text-gray-500">

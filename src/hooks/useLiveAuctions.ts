@@ -7,8 +7,10 @@ const POLL_INTERVAL_MS = 60_000 // 60초 주기 폴링
 export interface LiveAuctionState {
   items: AuctionItem[]
   total: number
-  isLive: boolean          // FastAPI 서버 연동 여부 (false = mock 폴백)
-  lastUpdated: Date | null
+  isLive: boolean          // 실제 수집 데이터 여부 (false = 샘플/mock 폴백)
+  dataSource: string | null // 'mock' | 'data.go.kr' 등
+  lastSync: string | null   // 서버가 데이터를 마지막으로 갱신한 시각
+  lastUpdated: Date | null  // 브라우저가 마지막으로 조회한 시각
   loading: boolean
   refresh: () => void
 }
@@ -23,6 +25,8 @@ export const useLiveAuctions = (limit = 100): LiveAuctionState => {
   const [items, setItems] = useState<AuctionItem[]>([])
   const [total, setTotal] = useState(0)
   const [isLive, setIsLive] = useState(false)
+  const [dataSource, setDataSource] = useState<string | null>(null)
+  const [lastSync, setLastSync] = useState<string | null>(null)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [loading, setLoading] = useState(true)
   const mountedRef = useRef(true)
@@ -36,7 +40,11 @@ export const useLiveAuctions = (limit = 100): LiveAuctionState => {
       if (!mountedRef.current) return
       setItems(result.items)
       setTotal(result.total)
-      setIsLive(health !== null && health.status === 'ok')
+      // status:'ok'는 함수가 살아있다는 뜻일 뿐이라 mock 폴백 중에도 true다.
+      // 실제 수집 데이터인지는 is_live/source로만 판단한다.
+      setIsLive(health !== null && (health.is_live ?? health.source !== 'mock') === true)
+      setDataSource(health?.source ?? null)
+      setLastSync(health?.last_update && health.last_update !== 'never' ? health.last_update : null)
       setLastUpdated(new Date())
     } catch (error) {
       console.warn('[useLiveAuctions] 데이터 조회 실패:', error)
@@ -63,7 +71,7 @@ export const useLiveAuctions = (limit = 100): LiveAuctionState => {
     }
   }, [fetchData])
 
-  return { items, total, isLive, lastUpdated, loading, refresh: fetchData }
+  return { items, total, isLive, dataSource, lastSync, lastUpdated, loading, refresh: fetchData }
 }
 
 export default useLiveAuctions

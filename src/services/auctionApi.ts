@@ -48,6 +48,9 @@ export interface SystemHealth {
   status: string
   db: boolean
   scraper: boolean
+  /** 실제 외부 데이터 스냅샷을 서빙 중인지. false면 샘플(mock) 데이터. */
+  is_live?: boolean
+  source?: 'mock' | 'data.go.kr' | string
   last_update: string
   version: string
 }
