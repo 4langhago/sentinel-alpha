@@ -10,7 +10,10 @@ export const SERVICES = {
   APT_TRADE: {
     id: 'APT_TRADE',
     label: '아파트 매매',
-    path: 'RTMSDataSvcAptTrade/getRTMSDataSvcAptTrade',
+    // 상세자료(Dev) 버전. 일반 버전보다 필드가 많고, 특히 계약 해제 여부(cdealType)를
+    // 제공해 해제된 거래를 시세 통계에서 걸러낼 수 있다.
+    // 상세자료는 아파트 매매에만 존재하고 전월세·오피스텔에는 없다.
+    path: 'RTMSDataSvcAptTradeDev/getRTMSDataSvcAptTradeDev',
     dealType: 'TRADE',
     propertyType: 'APARTMENT',
   },
@@ -108,8 +111,17 @@ export async function fetchTrades({ serviceKey, service, lawdCd, dealYmd, numOfR
   if (!res.ok) throw new Error(`data.go.kr HTTP ${res.status}`)
 
   const items = []
+  let cancelled = 0
   for (const m of xml.matchAll(/<item>([\s\S]*?)<\/item>/g)) {
     const b = m[1]
+
+    // 상세자료의 해제여부: 'O'면 계약이 해제된 거래.
+    // 실제로 성사되지 않은 가격이라 시세 통계에 넣으면 왜곡되므로 제외한다.
+    const cdealType = pick(b, 'cdealType', '해제여부')
+    if (cdealType.toUpperCase() === 'O') {
+      cancelled++
+      continue
+    }
 
     // 신버전(영문) / 구버전(한글) 태그를 모두 시도
     const name = pick(b, 'aptNm', 'offiNm', 'aptName', '아파트', '단지')
@@ -140,6 +152,10 @@ export async function fetchTrades({ serviceKey, service, lawdCd, dealYmd, numOfR
 
     const address = [umd, jibun].filter(Boolean).join(' ')
 
+    // 상세자료에만 있는 부가 정보 (없으면 빈 값)
+    const dealingGbn = pick(b, 'dealingGbn', '거래유형') // 중개거래 / 직거래
+    const roadNm = pick(b, 'roadNm', '도로명')
+
     items.push({
       // 같은 단지·면적·날짜·가격이면 동일 거래로 간주하는 안정적 ID
       id: `${sggCd}-${name}-${area}-${dealDate}-${dealAmount || deposit}-${floor}`,
@@ -148,6 +164,9 @@ export async function fetchTrades({ serviceKey, service, lawdCd, dealYmd, numOfR
       umd,
       jibun,
       address,
+      road_name: roadNm,
+      /** '중개거래' | '직거래' | '' (아파트 매매 상세자료에만 존재) */
+      dealing_type: dealingGbn,
       property_type: service.propertyType,
       deal_type: service.dealType,
       // 전월세 중 월세가 0이면 전세
@@ -164,6 +183,8 @@ export async function fetchTrades({ serviceKey, service, lawdCd, dealYmd, numOfR
     })
   }
 
+  // 해제 건수는 수집 로그에서 확인할 수 있도록 배열에 비열거 속성으로 붙인다.
+  Object.defineProperty(items, 'cancelledCount', { value: cancelled, enumerable: false })
   return items
 }
 

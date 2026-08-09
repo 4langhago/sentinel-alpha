@@ -56,12 +56,14 @@ export async function collectTrades({
   const items = []
   const errors = []
   let calls = 0
+  let cancelled = 0
   let fatal = null
 
   for (const { sgg, ym, svc } of plan) {
     try {
       const rows = await fetchTrades({ serviceKey, service: svc, lawdCd: sgg.code, dealYmd: ym })
       calls++
+      cancelled += rows.cancelledCount || 0
       for (const r of rows) items.push({ ...r, sido: sgg.sido, sgg: sgg.sgg, region_name: sgg.name })
       if (calls % 50 === 0) onProgress(`${calls}/${plan.length} 호출 · 누적 ${items.length}건`)
     } catch (e) {
@@ -94,6 +96,8 @@ export async function collectTrades({
         planned: plan.length,
         collected: items.length,
         deduped: deduped.length,
+        /** 계약 해제로 제외한 건수 */
+        cancelled,
         errors: errors.length,
         elapsed_sec: Math.round((Date.now() - started) / 1000),
       },

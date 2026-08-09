@@ -17,6 +17,10 @@ export interface TradeItem {
   umd: string
   jibun: string
   address: string
+  /** 도로명 (아파트 매매 상세자료에만 존재) */
+  road_name?: string
+  /** '중개거래' | '직거래' (아파트 매매 상세자료에만 존재) */
+  dealing_type?: string
   property_type: PropertyType
   deal_type: DealType
   rent_type: RentType

@@ -71,6 +71,11 @@ const TradeCard = ({ item, medianPerPyeong }: Props) => {
           {item.deal_date}
         </span>
         {item.build_year > 0 && <span>{item.build_year}년 준공</span>}
+        {item.dealing_type && (
+          <span className="inline-block bg-gray-100 dark:bg-gray-700 rounded px-1.5 py-0.5 text-[11px]">
+            {item.dealing_type}
+          </span>
+        )}
       </div>
 
       <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-700 flex items-center justify-between">
