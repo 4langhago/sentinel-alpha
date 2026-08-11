@@ -112,7 +112,7 @@ const ComplexPage = () => {
       </Link>
 
       {/* 헤더 */}
-      <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 p-6">
+      <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 p-4 sm:p-6">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
             <h1 className="text-2xl md:text-3xl font-black text-gray-900 dark:text-white mb-2">
@@ -174,7 +174,7 @@ const ComplexPage = () => {
       </div>
 
       {/* 리스크 스코어 */}
-      <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 p-6">
+      <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 p-4 sm:p-6">
         <div className="flex items-center gap-2 mb-4">
           <ShieldAlert className="w-5 h-5 text-violet-600" />
           <h2 className="font-bold text-gray-900 dark:text-white">데이터 기반 리스크 스코어</h2>
@@ -230,19 +230,51 @@ const ComplexPage = () => {
       </div>
 
       {/* 추이 */}
-      <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 p-6">
+      <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 p-4 sm:p-6">
         <PriceTrendChart trend={trend} />
       </div>
 
       {/* 거래 이력 */}
       <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center gap-2">
+        <div className="px-4 sm:px-6 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center gap-2">
           <TrendingUp className="w-5 h-5 text-violet-600" />
           <h2 className="font-bold text-gray-900 dark:text-white">거래 이력</h2>
           <span className="text-sm text-gray-400">최근 {detail.history.length}건</span>
         </div>
 
-        <div className="overflow-x-auto">
+        {/* 모바일: 카드 목록. 6컬럼 테이블은 폭 600px를 넘겨 가로 스크롤을 강제하므로 쓰지 않는다. */}
+        <ul className="sm:hidden divide-y divide-gray-100 dark:divide-gray-700">
+          {detail.history.map((h) => (
+            <li key={h.id} className="px-4 py-3">
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="font-bold text-gray-900 dark:text-white tabular-nums">
+                  {formatPrice(h.price)}
+                  {h.deal_type === 'RENT' && h.monthly_rent > 0 && (
+                    <span className="text-xs font-medium text-gray-500 ml-1">
+                      / 월 {Math.round(h.monthly_rent / 10000)}만
+                    </span>
+                  )}
+                </span>
+                <span
+                  className={`shrink-0 inline-block text-xs font-semibold rounded-full px-2 py-0.5 ${
+                    h.deal_type === 'TRADE'
+                      ? 'bg-violet-50 dark:bg-violet-500/10 text-violet-700 dark:text-violet-400'
+                      : 'bg-indigo-50 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-400'
+                  }`}
+                >
+                  {h.deal_type === 'TRADE' ? '매매' : h.rent_type === 'JEONSE' ? '전세' : '월세'}
+                </span>
+              </div>
+              <div className="mt-1 text-xs text-gray-500 dark:text-gray-400 tabular-nums">
+                {h.deal_date} · {h.area}㎡({toPyeong(h.area)}평) · {h.floor}층
+                {h.price_per_pyeong > 0 &&
+                  ` · 평당 ${Math.round(h.price_per_pyeong / 10000).toLocaleString()}만원`}
+              </div>
+            </li>
+          ))}
+        </ul>
+
+        <div className="hidden sm:block overflow-x-auto">
           <table className="w-full text-sm min-w-[600px]">
             <thead className="bg-gray-50 dark:bg-gray-900/50 text-gray-500 dark:text-gray-400">
               <tr>

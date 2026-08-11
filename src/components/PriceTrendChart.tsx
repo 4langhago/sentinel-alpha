@@ -146,7 +146,7 @@ const PriceTrendChart = ({ trend, className = '' }: Props) => {
       <div className="relative overflow-x-auto">
         <svg
           viewBox={`0 0 ${W} ${H}`}
-          className="w-full min-w-[420px]"
+          className="w-full min-w-[300px] sm:min-w-[420px]"
           role="img"
           aria-label="월별 중위 평당가 및 거래량 추이"
           onMouseLeave={() => setActiveIdx(null)}
