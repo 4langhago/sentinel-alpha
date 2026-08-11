@@ -92,7 +92,8 @@ const useRegionStats = (
   return { stats, loading }
 }
 
-/** 거래량에 따른 히트맵 배경 진하기 (violet 톤, 라이트/다크 공통 rgba) */
+// 거래량에 따른 히트맵 배경 진하기. 지도 타일은 브랜드 인터랙션이 아니라 데이터 강약 표현이지만,
+// 팀 결정에 따라 primary 계열(브랜드 색)로 통일한다 — rgb(124,58,237)는 primary-600(#7c3aed)과 동일.
 const heatBg = (count: number, max: number) => {
   if (max <= 0 || count <= 0) return undefined
   const ratio = Math.min(1, count / max)
@@ -125,19 +126,19 @@ const RegionMapFallback = ({ regions, sido, sggCode, q, onSelectSido, onSelectSg
       <div className="flex items-center gap-1.5 text-sm">
         <button
           onClick={() => onSelectSido('')}
-          className={`font-semibold hover:text-violet-600 dark:hover:text-violet-400 ${
-            !sido ? 'text-violet-600 dark:text-violet-400' : 'text-gray-500 dark:text-gray-400'
+          className={`font-semibold hover:text-primary-600 dark:hover:text-primary-400 ${
+            !sido ? 'text-primary-600 dark:text-primary-400' : 'text-slate-500 dark:text-slate-400'
           }`}
         >
           전국
         </button>
         {sido && (
           <>
-            <ChevronRight className="w-3.5 h-3.5 text-gray-300 dark:text-gray-600" />
+            <ChevronRight className="w-3.5 h-3.5 text-slate-300 dark:text-slate-600" />
             <button
               onClick={() => onSelectSgg('')}
-              className={`font-semibold hover:text-violet-600 dark:hover:text-violet-400 ${
-                !sggCode ? 'text-violet-600 dark:text-violet-400' : 'text-gray-500 dark:text-gray-400'
+              className={`font-semibold hover:text-primary-600 dark:hover:text-primary-400 ${
+                !sggCode ? 'text-primary-600 dark:text-primary-400' : 'text-slate-500 dark:text-slate-400'
               }`}
             >
               {sido}
@@ -146,11 +147,11 @@ const RegionMapFallback = ({ regions, sido, sggCode, q, onSelectSido, onSelectSg
         )}
         {sido && sggCode && sggName && (
           <>
-            <ChevronRight className="w-3.5 h-3.5 text-gray-300 dark:text-gray-600" />
-            <span className="font-semibold text-violet-600 dark:text-violet-400">{sggName}</span>
+            <ChevronRight className="w-3.5 h-3.5 text-slate-300 dark:text-slate-600" />
+            <span className="font-semibold text-primary-600 dark:text-primary-400">{sggName}</span>
           </>
         )}
-        {loading && <Loader2 className="w-3.5 h-3.5 text-gray-400 animate-spin ml-1" />}
+        {loading && <Loader2 className="w-3.5 h-3.5 text-slate-400 animate-spin ml-1" />}
       </div>
 
       {/* 시도 미선택 → 시도 타일 / 시도 선택 → 시군구 타일 */}
@@ -163,16 +164,16 @@ const RegionMapFallback = ({ regions, sido, sggCode, q, onSelectSido, onSelectSg
                   key={r.sido}
                   onClick={() => onSelectSido(r.sido)}
                   style={{ backgroundColor: s ? heatBg(s.count, maxCount) : undefined }}
-                  className="text-left rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 p-3 hover:border-violet-400 dark:hover:border-violet-500 transition-colors"
+                  className="text-left rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/40 p-3 hover:border-primary-400 dark:hover:border-primary-500 transition-colors"
                 >
-                  <p className="font-bold text-gray-900 dark:text-white text-sm">{r.sido}</p>
+                  <p className="font-bold text-slate-900 dark:text-white text-sm">{r.sido}</p>
                   {s && !s.unavailable ? (
-                    <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
                       {s.count.toLocaleString()}건
                       {s.count > 0 && ` · 평당 ${Math.round(s.medianPerPyeong / 10000).toLocaleString()}만`}
                     </p>
                   ) : (
-                    <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-1">집계 준비 중</p>
+                    <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">집계 준비 중</p>
                   )}
                 </button>
               )
@@ -187,18 +188,18 @@ const RegionMapFallback = ({ regions, sido, sggCode, q, onSelectSido, onSelectSg
                   style={{ backgroundColor: s ? heatBg(s.count, maxCount) : undefined }}
                   className={`text-left rounded-xl border p-3 transition-colors ${
                     active
-                      ? 'border-violet-500 ring-2 ring-violet-500/40 dark:ring-violet-400/40'
-                      : 'border-gray-200 dark:border-gray-700 hover:border-violet-400 dark:hover:border-violet-500'
-                  } bg-gray-50 dark:bg-gray-900/40`}
+                      ? 'border-primary-500 ring-2 ring-primary-500/40 dark:ring-primary-400/40'
+                      : 'border-slate-200 dark:border-slate-700 hover:border-primary-400 dark:hover:border-primary-500'
+                  } bg-slate-50 dark:bg-slate-900/40`}
                 >
-                  <p className="font-bold text-gray-900 dark:text-white text-sm">{sgg.name}</p>
+                  <p className="font-bold text-slate-900 dark:text-white text-sm">{sgg.name}</p>
                   {s && !s.unavailable ? (
-                    <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
                       {s.count.toLocaleString()}건
                       {s.count > 0 && ` · 평당 ${Math.round(s.medianPerPyeong / 10000).toLocaleString()}만`}
                     </p>
                   ) : (
-                    <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-1">집계 준비 중</p>
+                    <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">집계 준비 중</p>
                   )}
                 </button>
               )
@@ -206,7 +207,7 @@ const RegionMapFallback = ({ regions, sido, sggCode, q, onSelectSido, onSelectSg
       </div>
 
       {sido && currentSggs.length === 0 && (
-        <p className="text-xs text-gray-400 dark:text-gray-500 text-center py-6">
+        <p className="text-xs text-slate-400 dark:text-slate-500 text-center py-6">
           이 시도의 시군구 목록을 아직 불러오지 못했습니다.
         </p>
       )}

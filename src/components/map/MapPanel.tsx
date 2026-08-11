@@ -42,7 +42,7 @@ const KakaoMap = ({ sido }: { sido?: string }) => {
 
   if (status === 'error') {
     return (
-      <div className="h-full min-h-[320px] flex flex-col items-center justify-center text-center gap-2 text-gray-400 dark:text-gray-500 p-6">
+      <div className="h-full min-h-[320px] flex flex-col items-center justify-center text-center gap-2 text-slate-400 dark:text-slate-500 p-6">
         <AlertTriangle className="w-8 h-8" />
         <p className="text-sm">지도를 불러오지 못했습니다. API 키를 확인해주세요.</p>
       </div>
@@ -53,8 +53,8 @@ const KakaoMap = ({ sido }: { sido?: string }) => {
     <div className="relative h-full min-h-[320px]">
       <div ref={containerRef} className="absolute inset-0 rounded-2xl overflow-hidden" />
       {status === 'loading' && (
-        <div className="absolute inset-0 flex items-center justify-center bg-gray-50 dark:bg-gray-900/40 rounded-2xl animate-pulse">
-          <MapPinned className="w-8 h-8 text-gray-300 dark:text-gray-600" />
+        <div className="absolute inset-0 flex items-center justify-center bg-slate-50 dark:bg-slate-900/40 rounded-2xl animate-pulse">
+          <MapPinned className="w-8 h-8 text-slate-300 dark:text-slate-600" />
         </div>
       )}
     </div>
@@ -67,7 +67,7 @@ const KakaoMap = ({ sido }: { sido?: string }) => {
  */
 const MapPanel = ({ regions, sido, sggCode, q, onSelectSido, onSelectSgg }: Props) => {
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 p-5 h-full">
+    <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 p-5 h-full">
       {KAKAO_KEY ? (
         <KakaoMap sido={sido} />
       ) : (

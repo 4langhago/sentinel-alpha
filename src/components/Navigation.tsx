@@ -5,10 +5,10 @@ import { useAuth } from '../contexts/AuthContext'
 import ThemeToggle from './ThemeToggle'
 
 const TIER_BADGE: Record<string, { label: string; cls: string }> = {
-  FREE:     { label: '무료',       cls: 'bg-gray-100 text-gray-600' },
-  BASIC:    { label: '베이직',     cls: 'bg-blue-100 text-blue-700' },
-  PREMIUM:  { label: '프리미엄',   cls: 'bg-violet-100 text-violet-700' },
-  BUSINESS: { label: '비즈니스',   cls: 'bg-amber-100 text-amber-700' },
+  FREE:     { label: '무료',       cls: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300' },
+  BASIC:    { label: '베이직',     cls: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' },
+  PREMIUM:  { label: '프리미엄',   cls: 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400' },
+  BUSINESS: { label: '비즈니스',   cls: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' },
 }
 
 const Navigation = () => {
@@ -29,15 +29,15 @@ const Navigation = () => {
   const badge = user ? TIER_BADGE[user.membership] : null
 
   return (
-    <nav className="bg-white/90 dark:bg-gray-900/90 backdrop-blur-md shadow-sm border-b border-gray-200 dark:border-gray-800 sticky top-0 z-50 transition-colors duration-300">
+    <nav className="bg-white/90 dark:bg-slate-900/90 backdrop-blur-md shadow-sm border-b border-slate-200 dark:border-slate-800 sticky top-0 z-50 transition-colors duration-300">
       <div className="container mx-auto px-4">
         <div className="flex justify-between items-center h-16">
           {/* Logo */}
           <Link to="/" className="flex items-center space-x-2 group">
-            <div className="w-8 h-8 bg-gradient-to-br from-violet-600 to-indigo-600 rounded-lg flex items-center justify-center group-hover:scale-110 transition-transform">
+            <div className="w-8 h-8 bg-gradient-to-br from-primary-600 to-indigo-600 rounded-lg flex items-center justify-center group-hover:scale-110 transition-transform">
               <Search className="w-4 h-4 text-white" />
             </div>
-            <span className="text-lg font-black text-gray-900 dark:text-white">시세인사이트</span>
+            <span className="text-lg font-black text-slate-900 dark:text-white">시세인사이트</span>
           </Link>
 
           {/* Desktop Navigation */}
@@ -50,8 +50,8 @@ const Navigation = () => {
                   to={item.path}
                   className={`flex items-center space-x-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
                     isActive(item.path)
-                      ? 'text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-900/30'
-                      : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800'
+                      ? 'text-primary-600 dark:text-primary-400 bg-primary-50 dark:bg-primary-900/30'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
                   }`}
                 >
                   <Icon className="w-4 h-4" />
@@ -86,13 +86,13 @@ const Navigation = () => {
                     <span>{badge.label}</span>
                   </button>
                 )}
-                <div className="flex items-center space-x-1.5 text-sm text-gray-700 dark:text-gray-300 px-2">
-                  <User className="w-4 h-4 text-gray-400" />
+                <div className="flex items-center space-x-1.5 text-sm text-slate-700 dark:text-slate-300 px-2">
+                  <User className="w-4 h-4 text-slate-400" />
                   <span className="font-medium">{user.name}</span>
                 </div>
                 <button
                   onClick={logout}
-                  className="flex items-center space-x-1.5 px-3 py-2 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+                  className="flex items-center space-x-1.5 px-3 py-2 text-sm text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
                 >
                   <LogOut className="w-4 h-4" />
                   <span>로그아웃</span>
@@ -102,14 +102,14 @@ const Navigation = () => {
               <>
                 <button
                   onClick={() => navigate('/login')}
-                  className="flex items-center space-x-1.5 px-4 py-2 text-sm text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors font-medium"
+                  className="flex items-center space-x-1.5 px-4 py-2 text-sm text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors font-medium"
                 >
                   <LogIn className="w-4 h-4" />
                   <span>로그인</span>
                 </button>
                 <button
                   onClick={() => navigate('/signup')}
-                  className="flex items-center space-x-1.5 px-4 py-2 bg-gradient-to-r from-violet-600 to-indigo-600 text-white rounded-lg hover:shadow-lg hover:shadow-violet-500/30 transition-all font-medium text-sm"
+                  className="flex items-center space-x-1.5 px-4 py-2 bg-gradient-to-r from-primary-600 to-indigo-600 text-white rounded-lg hover:shadow-lg hover:shadow-primary-500/30 transition-all font-medium text-sm"
                 >
                   <UserPlus className="w-4 h-4" />
                   <span>무료 가입</span>
@@ -123,7 +123,7 @@ const Navigation = () => {
             <ThemeToggle />
             <button
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-              className="p-2 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+              className="p-2 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
             >
               {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
             </button>
@@ -132,7 +132,7 @@ const Navigation = () => {
 
         {/* Mobile Navigation */}
         {isMobileMenuOpen && (
-          <div className="md:hidden py-3 border-t border-gray-100 dark:border-gray-800">
+          <div className="md:hidden py-3 border-t border-slate-100 dark:border-slate-800">
             <div className="space-y-1 mb-3">
               {navItems.map((item) => {
                 const Icon = item.icon
@@ -143,8 +143,8 @@ const Navigation = () => {
                     onClick={() => setIsMobileMenuOpen(false)}
                     className={`flex items-center space-x-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
                       isActive(item.path)
-                        ? 'text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-900/30'
-                        : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
+                        ? 'text-primary-600 dark:text-primary-400 bg-primary-50 dark:bg-primary-900/30'
+                        : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
                     }`}
                   >
                     <Icon className="w-5 h-5" />
@@ -154,7 +154,7 @@ const Navigation = () => {
               })}
             </div>
 
-            <div className="border-t border-gray-100 dark:border-gray-800 pt-3 space-y-2">
+            <div className="border-t border-slate-100 dark:border-slate-800 pt-3 space-y-2">
               {isLoggedIn && user ? (
                 <>
                   {remainingViews !== null && (
@@ -167,7 +167,7 @@ const Navigation = () => {
                     </button>
                   )}
                   <div className="flex items-center justify-between px-3 py-2">
-                    <div className="flex items-center space-x-2 text-sm text-gray-700 dark:text-gray-300">
+                    <div className="flex items-center space-x-2 text-sm text-slate-700 dark:text-slate-300">
                       <User className="w-4 h-4" />
                       <span className="font-medium">{user.name}</span>
                       {badge && (
@@ -176,7 +176,7 @@ const Navigation = () => {
                     </div>
                     <button
                       onClick={() => { logout(); setIsMobileMenuOpen(false) }}
-                      className="flex items-center space-x-1 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+                      className="flex items-center space-x-1 text-sm text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
                     >
                       <LogOut className="w-4 h-4" />
                       <span>로그아웃</span>
@@ -184,7 +184,7 @@ const Navigation = () => {
                   </div>
                   <button
                     onClick={() => { openMembershipModal(); setIsMobileMenuOpen(false) }}
-                    className="w-full flex items-center justify-center space-x-2 px-3 py-2.5 bg-violet-50 dark:bg-violet-900/30 text-violet-700 dark:text-violet-400 rounded-lg font-medium text-sm"
+                    className="w-full flex items-center justify-center space-x-2 px-3 py-2.5 bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400 rounded-lg font-medium text-sm"
                   >
                     <Crown className="w-4 h-4" />
                     <span>멤버십 업그레이드</span>
@@ -194,14 +194,14 @@ const Navigation = () => {
                 <>
                   <button
                     onClick={() => { navigate('/login'); setIsMobileMenuOpen(false) }}
-                    className="w-full flex items-center justify-center space-x-2 px-3 py-2.5 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 rounded-lg font-medium text-sm"
+                    className="w-full flex items-center justify-center space-x-2 px-3 py-2.5 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 rounded-lg font-medium text-sm"
                   >
                     <LogIn className="w-4 h-4" />
                     <span>로그인</span>
                   </button>
                   <button
                     onClick={() => { navigate('/signup'); setIsMobileMenuOpen(false) }}
-                    className="w-full flex items-center justify-center space-x-2 px-3 py-2.5 bg-gradient-to-r from-violet-600 to-indigo-600 text-white rounded-lg font-medium text-sm"
+                    className="w-full flex items-center justify-center space-x-2 px-3 py-2.5 bg-gradient-to-r from-primary-600 to-indigo-600 text-white rounded-lg font-medium text-sm"
                   >
                     <UserPlus className="w-4 h-4" />
                     <span>무료 회원가입</span>

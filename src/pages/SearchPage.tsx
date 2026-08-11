@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { SearchX, ChevronLeft, ChevronRight, Info, Map, List, X } from 'lucide-react'
+import { SearchX, ChevronLeft, ChevronRight, Info, Map, List, X, LayoutGrid, Rows3 } from 'lucide-react'
 import TradeFilters from '../components/TradeFilters'
 import TradeCard from '../components/TradeCard'
+import TradeTable from '../components/TradeTable'
 import DataSourceBadge from '../components/DataSourceBadge'
 import MapPanel from '../components/map/MapPanel'
 import { useTrades } from '../hooks/useTrades'
@@ -46,6 +47,18 @@ const SearchPage = () => {
     if (next.buildYearMin !== undefined) sp.set('by', String(next.buildYearMin))
     if (next.sort && next.sort !== 'recent') sp.set('sort', next.sort)
     if (next.page && next.page > 1) sp.set('page', String(next.page))
+    // view(카드/테이블)는 검색 조건이 아니라 화면 표시 방식이라 필터 갱신에 영향받지 않게 유지한다.
+    const currentView = searchParams.get('view')
+    if (currentView) sp.set('view', currentView)
+    setSearchParams(sp)
+  }
+
+  // 데스크톱 전용 목록 표시 방식(카드/테이블). URL 쿼리로 보존해 새로고침·공유에도 유지된다.
+  const view = (searchParams.get('view') as 'card' | 'table') || 'card'
+  const setView = (v: 'card' | 'table') => {
+    const sp = new URLSearchParams(searchParams)
+    if (v === 'table') sp.set('view', 'table')
+    else sp.delete('view')
     setSearchParams(sp)
   }
 
@@ -130,8 +143,8 @@ const SearchPage = () => {
   return (
     <div className="container mx-auto px-4 py-8 space-y-6">
       <div>
-        <h1 className="text-2xl md:text-3xl font-black text-gray-900 dark:text-white mb-1">실거래 검색</h1>
-        <p className="text-gray-500 dark:text-gray-400 text-sm">
+        <h1 className="text-2xl md:text-3xl font-black text-slate-900 dark:text-white mb-1">실거래 검색</h1>
+        <p className="text-slate-500 dark:text-slate-400 text-sm">
           국토교통부에 신고된 아파트·오피스텔 실제 거래 내역을 조건별로 찾아봅니다.
         </p>
         <DataSourceBadge
@@ -146,9 +159,9 @@ const SearchPage = () => {
 
       <TradeFilters value={filters} onChange={applyFilters} />
 
-      {/* 현재 조건의 시세 요약 */}
+      {/* 현재 조건의 시세 요약 — 모바일은 첫 거래까지 스크롤을 줄이려 가로 스크롤 칩으로, md 이상은 4칸 그리드로 */}
       {stats && stats.count > 0 && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="flex md:grid md:grid-cols-4 gap-3 overflow-x-auto md:overflow-visible -mx-4 px-4 md:mx-0 md:px-0 pb-1 md:pb-0 snap-x snap-mandatory md:snap-none scrollbar-hide">
           {[
             { label: '매매 거래', value: `${stats.count.toLocaleString()}건` },
             { label: '중위가', value: formatPrice(stats.median_price) },
@@ -160,53 +173,29 @@ const SearchPage = () => {
           ].map((s) => (
             <div
               key={s.label}
-              className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 px-4 py-3"
+              className="shrink-0 w-[42vw] sm:w-[180px] md:w-auto snap-start bg-white dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700 px-4 py-3"
             >
-              <p className="text-[11px] text-gray-500 dark:text-gray-400">{s.label}</p>
-              <p className="text-base md:text-lg font-bold text-gray-900 dark:text-white">{s.value}</p>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">{s.label}</p>
+              <p className="text-base md:text-lg font-bold text-slate-900 dark:text-white tabular-nums">
+                {s.value}
+              </p>
             </div>
           ))}
         </div>
       )}
 
-      {/* 태블릿/모바일: 지도 ⇄ 목록 토글 */}
-      <div className="lg:hidden flex items-center gap-2">
-        <button
-          onClick={() => setMobileView('list')}
-          className={`flex-1 inline-flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-semibold transition-colors ${
-            mobileView === 'list'
-              ? 'bg-violet-600 text-white'
-              : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300'
-          }`}
-        >
-          <List className="w-4 h-4" />
-          목록
-        </button>
-        <button
-          onClick={() => setMobileView('map')}
-          className={`flex-1 inline-flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-semibold transition-colors ${
-            mobileView === 'map'
-              ? 'bg-violet-600 text-white'
-              : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300'
-          }`}
-        >
-          <Map className="w-4 h-4" />
-          지도
-        </button>
-      </div>
-
-      {/* 태블릿/모바일 지도 패널 (토글 시에만 노출) */}
-      <div className={mobileView === 'map' ? 'lg:hidden block' : 'lg:hidden hidden'}>{mapPanel}</div>
+      {/* 태블릿/모바일 지도 패널 (토글 시에만 노출). 하단 sticky 토글바에 가리지 않게 여백을 둔다. */}
+      <div className={mobileView === 'map' ? 'lg:hidden block pb-16' : 'lg:hidden hidden'}>{mapPanel}</div>
 
       {/* 2단 레이아웃: 좌측 목록(스크롤) + 우측 지도(sticky) */}
       <div className="lg:grid lg:grid-cols-[1fr_380px] xl:grid-cols-[1fr_440px] lg:gap-6 lg:items-start">
-        <div className={`space-y-6 ${mobileView === 'map' ? 'hidden lg:block' : ''}`}>
-          {/* 활성 필터 칩 + 총 건수 */}
+        <div className={`space-y-6 ${mobileView === 'map' ? 'hidden lg:block' : 'pb-16 lg:pb-0'}`}>
+          {/* 활성 필터 칩 + 총 건수 + (데스크톱) 카드/테이블 전환 */}
           <div className="flex flex-wrap items-center gap-2">
-            <p className="text-sm text-gray-600 dark:text-gray-300 shrink-0">
-              총 <span className="font-bold text-violet-600 dark:text-violet-400">{total.toLocaleString()}</span>건
+            <p className="text-sm text-slate-600 dark:text-slate-300 shrink-0">
+              총 <span className="font-bold text-primary-600 dark:text-primary-400">{total.toLocaleString()}</span>건
               {totalPages > 1 && (
-                <span className="text-gray-400 ml-2">
+                <span className="text-slate-400 ml-2">
                   ({page} / {totalPages} 페이지)
                 </span>
               )}
@@ -214,18 +203,46 @@ const SearchPage = () => {
             {activeChips.map((c) => (
               <span
                 key={c.label}
-                className="inline-flex items-center gap-1 bg-violet-50 dark:bg-violet-500/10 text-violet-700 dark:text-violet-300 text-xs font-semibold rounded-full pl-3 pr-1.5 py-1"
+                className="inline-flex items-center gap-1 bg-primary-50 dark:bg-primary-500/10 text-primary-700 dark:text-primary-300 text-xs font-semibold rounded-full pl-3 pr-1.5 py-1"
               >
                 {c.label}
                 <button
                   onClick={c.onClear}
-                  className="hover:bg-violet-100 dark:hover:bg-violet-500/20 rounded-full p-0.5"
+                  className="hover:bg-primary-100 dark:hover:bg-primary-500/20 rounded-full p-0.5"
                   aria-label={`${c.label} 필터 해제`}
                 >
                   <X className="w-3 h-3" />
                 </button>
               </span>
             ))}
+
+            {/* 여러 거래의 가격을 세로로 비교하려면 테이블 뷰가 유리하다. 데스크톱 전용. */}
+            <div className="hidden lg:inline-flex ml-auto items-center gap-0.5 bg-slate-100 dark:bg-slate-800 rounded-lg p-0.5">
+              <button
+                onClick={() => setView('card')}
+                aria-pressed={view === 'card'}
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-semibold transition-colors ${
+                  view === 'card'
+                    ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm'
+                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+                }`}
+              >
+                <LayoutGrid className="w-3.5 h-3.5" />
+                카드
+              </button>
+              <button
+                onClick={() => setView('table')}
+                aria-pressed={view === 'table'}
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-semibold transition-colors ${
+                  view === 'table'
+                    ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm'
+                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+                }`}
+              >
+                <Rows3 className="w-3.5 h-3.5" />
+                테이블
+              </button>
+            </div>
           </div>
 
           {/* 시도/전국 범위는 최신 일부만 검색한다. 전체를 뒤진 것처럼 보이면 안 되므로 명시한다. */}
@@ -249,21 +266,29 @@ const SearchPage = () => {
           {loading && items.length === 0 ? (
             <div className="grid md:grid-cols-2 gap-4">
               {Array.from({ length: 6 }, (_, i) => (
-                <div key={i} className="h-48 rounded-2xl bg-gray-100 dark:bg-gray-800 animate-pulse" />
+                <div key={i} className="h-48 rounded-2xl bg-slate-100 dark:bg-slate-800 animate-pulse" />
               ))}
             </div>
           ) : items.length === 0 ? (
-            <div className="text-center py-20 bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700">
-              <SearchX className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-              <p className="text-gray-700 dark:text-gray-200 font-semibold mb-1">조건에 맞는 거래가 없습니다</p>
-              <p className="text-gray-500 dark:text-gray-400 text-sm">검색어나 필터를 넓혀보세요.</p>
+            <div className="text-center py-20 bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700">
+              <SearchX className="w-12 h-12 text-slate-300 mx-auto mb-4" />
+              <p className="text-slate-700 dark:text-slate-200 font-semibold mb-1">조건에 맞는 거래가 없습니다</p>
+              <p className="text-slate-500 dark:text-slate-400 text-sm">검색어나 필터를 넓혀보세요.</p>
             </div>
           ) : (
-            <div className="grid md:grid-cols-2 gap-4">
-              {items.map((item) => (
-                <TradeCard key={item.id} item={item} medianPerPyeong={stats?.median_per_pyeong} />
-              ))}
-            </div>
+            <>
+              {/* 모바일/태블릿은 항상 카드. 데스크톱은 view에 따라 카드 또는 조밀 테이블. */}
+              <div className={`grid md:grid-cols-2 gap-4 ${view === 'table' ? 'lg:hidden' : ''}`}>
+                {items.map((item) => (
+                  <TradeCard key={item.id} item={item} medianPerPyeong={stats?.median_per_pyeong} />
+                ))}
+              </div>
+              {view === 'table' && (
+                <div className="hidden lg:block">
+                  <TradeTable items={items} medianPerPyeong={stats?.median_per_pyeong} />
+                </div>
+              )}
+            </>
           )}
 
           {totalPages > 1 && (
@@ -271,7 +296,7 @@ const SearchPage = () => {
               <button
                 onClick={() => goPage(page - 1)}
                 disabled={page <= 1}
-                className="p-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 disabled:opacity-40 hover:bg-gray-50 dark:hover:bg-gray-800"
+                className="p-2 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 disabled:opacity-40 hover:bg-slate-50 dark:hover:bg-slate-800"
               >
                 <ChevronLeft className="w-4 h-4" />
               </button>
@@ -287,8 +312,8 @@ const SearchPage = () => {
                     onClick={() => goPage(p)}
                     className={`w-9 h-9 rounded-lg text-sm font-semibold ${
                       p === page
-                        ? 'bg-violet-600 text-white'
-                        : 'border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'
+                        ? 'bg-primary-600 text-white'
+                        : 'border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
                     }`}
                   >
                     {p}
@@ -297,7 +322,7 @@ const SearchPage = () => {
               <button
                 onClick={() => goPage(page + 1)}
                 disabled={page >= totalPages}
-                className="p-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 disabled:opacity-40 hover:bg-gray-50 dark:hover:bg-gray-800"
+                className="p-2 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 disabled:opacity-40 hover:bg-slate-50 dark:hover:bg-slate-800"
               >
                 <ChevronRight className="w-4 h-4" />
               </button>
@@ -307,6 +332,34 @@ const SearchPage = () => {
 
         {/* 데스크톱 지도 패널: 뷰포트 높이에 맞춰 sticky */}
         <div className="hidden lg:block sticky top-6 max-h-[calc(100vh-3rem)] overflow-y-auto">{mapPanel}</div>
+      </div>
+
+      {/* 모바일/태블릿 하단 고정 지도⇄목록 토글. 최상단에 쌓아두지 않아 첫 매물까지 스크롤이 짧아진다. */}
+      <div className="lg:hidden fixed bottom-0 inset-x-0 z-30 bg-white/90 dark:bg-slate-900/90 backdrop-blur border-t border-slate-100 dark:border-slate-700 px-4 py-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))]">
+        <div className="flex items-center gap-2 max-w-md mx-auto">
+          <button
+            onClick={() => setMobileView('list')}
+            className={`flex-1 inline-flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-semibold transition-colors ${
+              mobileView === 'list'
+                ? 'bg-primary-600 text-white'
+                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
+            }`}
+          >
+            <List className="w-4 h-4" />
+            목록
+          </button>
+          <button
+            onClick={() => setMobileView('map')}
+            className={`flex-1 inline-flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-semibold transition-colors ${
+              mobileView === 'map'
+                ? 'bg-primary-600 text-white'
+                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
+            }`}
+          >
+            <Map className="w-4 h-4" />
+            지도
+          </button>
+        </div>
       </div>
     </div>
   )
