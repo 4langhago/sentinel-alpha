@@ -1,5 +1,5 @@
 // 실거래가 일일 수집 — Netlify Scheduled Function
-// 매일 KST 09:00에 실행되어 최근 3개월 실거래를 모아
+// 매일 WIB(인도네시아) 07:30 = KST 09:30에 실행되어 최근 3개월 실거래를 모아
 // Netlify Blobs("trades" store, key "latest.json")에 저장한다.
 import { getStore } from '@netlify/blobs'
 import { collectTrades } from './lib/collect.mjs'
@@ -51,6 +51,7 @@ export default async () => {
 }
 
 export const config = {
-  // Netlify 스케줄은 UTC 기준. KST 09:00 = UTC 00:00
-  schedule: '0 0 * * *',
+  // Netlify 스케줄은 UTC 기준.
+  // WIB(인도네시아 서부, UTC+7) 07:30 = UTC 00:30 = KST 09:30
+  schedule: '30 0 * * *',
 }
