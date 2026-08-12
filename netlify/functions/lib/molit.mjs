@@ -4,6 +4,11 @@
 // 응답이 XML이고, 서비스 개편으로 태그명이 구버전(한글)과 신버전(영문)이 섞여 있어
 // 양쪽을 모두 허용하는 파서를 사용한다.
 
+import { pick, toInt, toFloat, readError, normalizeServiceKey } from './xmlPick.mjs'
+
+// 온비드 클라이언트 등에서도 molit.mjs 경유로 쓰고 있어 재수출한다.
+export { normalizeServiceKey }
+
 const BASE = 'https://apis.data.go.kr/1613000'
 
 export const SERVICES = {
@@ -52,37 +57,6 @@ export const SERVICES = {
 /** 기본 수집 대상 */
 export const DEFAULT_SERVICE_IDS = ['APT_TRADE', 'APT_RENT', 'OFFI_TRADE', 'NRG_TRADE', 'LAND_TRADE']
 
-// XML 한 <item> 안에서 여러 후보 태그명 중 처음 발견되는 값을 꺼낸다.
-const pick = (body, ...names) => {
-  for (const n of names) {
-    const m = body.match(new RegExp(`<${n}>([\\s\\S]*?)</${n}>`))
-    if (m) {
-      const v = m[1].replace(/<!\[CDATA\[|\]\]>/g, '').trim()
-      if (v) return v
-    }
-  }
-  return ''
-}
-
-const toInt = (v) => {
-  const n = parseInt(String(v).replace(/[,\s]/g, ''), 10)
-  return Number.isFinite(n) ? n : 0
-}
-const toFloat = (v) => {
-  const n = parseFloat(String(v).replace(/[,\s]/g, ''))
-  return Number.isFinite(n) ? n : 0
-}
-
-/** API가 에러 XML을 돌려줬는지 확인하고, 그렇다면 사람이 읽을 메시지를 만든다. */
-const readError = (xml) => {
-  const code = pick(xml, 'returnReasonCode', 'resultCode')
-  const msg = pick(xml, 'returnAuthMsg', 'errMsg', 'resultMsg')
-  if (!msg) return null
-  // 정상 응답도 resultCode 00 / "NORMAL SERVICE."를 담고 있으므로 제외
-  if (/^0*0$/.test(code) || /NORMAL/i.test(msg)) return null
-  return `${msg}${code ? ` (code ${code})` : ''}`
-}
-
 /**
  * 시군구 + 계약월 단위로 실거래 내역을 조회한다.
  * @param {object} opts
@@ -92,24 +66,6 @@ const readError = (xml) => {
  * @param {string} opts.dealYmd     'YYYYMM'
  * @param {number} [opts.numOfRows]
  */
-/**
- * data.go.kr은 "일반 인증키(Encoding)"와 "(Decoding)" 두 가지를 보여준다.
- * Encoding 키를 그대로 URLSearchParams에 넣으면 %가 다시 인코딩돼(%2B → %252B)
- * 인증에 실패한다. 인코딩된 형태로 보이면 한 번 디코딩해서 사용한다.
- */
-export function normalizeServiceKey(key) {
-  const k = (key || '').trim()
-  if (!k) return ''
-  if (/%[0-9A-Fa-f]{2}/.test(k)) {
-    try {
-      return decodeURIComponent(k)
-    } catch {
-      return k
-    }
-  }
-  return k
-}
-
 export async function fetchTrades({ serviceKey, service, lawdCd, dealYmd, numOfRows = 1000 }) {
   const params = new URLSearchParams({
     serviceKey: normalizeServiceKey(serviceKey),
