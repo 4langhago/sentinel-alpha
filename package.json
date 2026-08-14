@@ -13,6 +13,7 @@
     "deploy:firebase": "npm run build && firebase deploy --only hosting",
     "dev:api": "node scripts/dev-api.mjs",
     "dev:all": "concurrently -n api,web -c cyan,green \"node scripts/dev-api.mjs\" \"vite\"",
+    "dev:mobile": "concurrently -n api,web -c cyan,green \"node scripts/dev-api.mjs\" \"vite --host\"",
     "collect": "node scripts/collect-local.mjs",
     "onbid:dump": "node scripts/dump-onbid-sample.mjs",
     "onbid:probe": "node scripts/probe-onbid.mjs"
