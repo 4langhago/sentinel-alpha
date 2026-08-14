@@ -3,19 +3,40 @@ import { fetchTrades, recentMonths, SERVICES, DEFAULT_SERVICE_IDS } from './moli
 import { ALL_SGG } from './regionCodes.mjs'
 
 // 무료 개발계정은 보통 일 1,000회 제한이라 여유를 두고 상한을 건다.
-// 수도권+부산·대구·울산 91개 시군구 × 3개월 × 3서비스 = 819회를 커버하는 값.
+//
+// 전국 계획은 145개 시군구 × 3개월 × 5종목 = 2,175회로 이 예산을 넘는다.
+// 즉 한 번의 실행은 전국을 다 돌지 못한다. buildPlan이 날짜에 따라 구간을 돌려
+// 며칠에 걸쳐 전국을 훑고, 저장 시에는 반드시 기존 데이터와 병합해야
+// (storage.mergeWithStored) 이번 구간 밖의 지역이 사라지지 않는다.
 export const DEFAULT_MAX_CALLS = 900
 export const DEFAULT_MONTHS = 3
 
 // 호출 예산을 먼저 배분받는 지역 (수도권·광역시)
 const PRIORITY_SIDO = ['서울', '경기', '인천', '부산', '대구', '대전', '광주', '울산', '세종']
 
-/** 호출 계획 생성: 우선 지역 → 나머지 지역, 각 지역마다 최근 N개월 × 3개 서비스 */
+/** 배열을 n칸 왼쪽으로 회전한다. */
+const rotate = (arr, n) => [...arr.slice(n), ...arr.slice(0, n)]
+
+/** UTC 기준 일련 일수. 하루에 한 창(window)씩 회전 시작점을 옮기는 데 쓴다. */
+const dayNumber = (now = new Date()) => Math.floor(now.getTime() / 86_400_000)
+
+/**
+ * 호출 계획 생성: 우선 지역 → 나머지 지역, 각 지역마다 최근 N개월 × 전체 종목.
+ *
+ * 전국 계획(2,175회)이 하루 예산(900회)보다 커서 한 번에 다 돌 수 없다.
+ * 순서가 고정이면 앞쪽(서울·경기)만 매일 갱신되고 나머지 시군구는 영영
+ * 갱신되지 않는다. 그래서 하루에 처리하는 만큼씩 시작 지점을 밀어,
+ * 며칠에 걸쳐 전국이 빠짐없이 한 바퀴 돌게 한다.
+ * 우선 지역이 목록 앞쪽에 있어 한 바퀴 안에서 상대적으로 자주 나온다.
+ *
+ * @param {Date} [opts.now] 회전 위치 계산 기준 시각 (테스트용)
+ */
 export function buildPlan({
   months = DEFAULT_MONTHS,
   maxCalls = DEFAULT_MAX_CALLS,
   serviceIds = DEFAULT_SERVICE_IDS,
   sidoFilter,
+  now,
 } = {}) {
   const ymList = recentMonths(months)
   const svcList = serviceIds.map((id) => SERVICES[id]).filter(Boolean)
@@ -26,9 +47,17 @@ export function buildPlan({
 
   const priority = targets.filter((s) => PRIORITY_SIDO.includes(s.sido))
   const rest = targets.filter((s) => !PRIORITY_SIDO.includes(s.sido))
+  const ordered = [...priority, ...rest]
+
+  // 시군구 하나당 필요한 호출 수 → 하루 예산으로 몇 개를 돌 수 있는지.
+  const callsPerSgg = ymList.length * svcList.length
+  const perRun = Math.max(1, Math.floor(maxCalls / callsPerSgg))
+  // 하루에 처리한 만큼 시작 지점을 밀어 다음 날은 그 다음 구간을 돈다.
+  const start = ordered.length ? (dayNumber(now) * perRun) % ordered.length : 0
+  const rotated = rotate(ordered, start)
 
   const plan = []
-  for (const sgg of [...priority, ...rest]) {
+  for (const sgg of rotated) {
     for (const ym of ymList) {
       for (const svc of svcList) plan.push({ sgg, ym, svc })
     }

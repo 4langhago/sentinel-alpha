@@ -36,10 +36,15 @@ export function computeStats(items) {
   const perPyeong = forUnitPrice.map((it) => it.price_per_pyeong)
 
   const byMonth = new Map()
+  const byProperty = new Map()
   for (const it of forUnitPrice) {
     const ym = it.deal_date.slice(0, 7)
     if (!byMonth.has(ym)) byMonth.set(ym, [])
     byMonth.get(ym).push(it.price_per_pyeong)
+
+    const pt = it.property_type || 'UNKNOWN'
+    if (!byProperty.has(pt)) byProperty.set(pt, [])
+    byProperty.get(pt).push(it.price_per_pyeong)
   }
 
   return {
@@ -49,6 +54,23 @@ export function computeStats(items) {
     min_price: Math.min(...prices),
     max_price: Math.max(...prices),
     median_per_pyeong: median(perPyeong),
+    /**
+     * 평당가 통계의 모집단 크기. count(전체 매매 건수)와 다르다.
+     * 지분 거래와 면적 0인 건이 빠지기 때문이며, 여러 지역 통계를 합칠 때
+     * median_per_pyeong의 가중치로는 반드시 이 값을 써야 한다.
+     */
+    unit_price_count: perPyeong.length,
+    /**
+     * 종목별 평당가. 아파트·오피스텔·상가·토지는 평당가 스케일이 서로 달라
+     * 한 덩어리로 중위값을 내면 지역 시세가 왜곡된다.
+     * 화면이 종목을 고른 경우 여기서 해당 종목 값을 꺼내 쓴다.
+     */
+    per_property: Object.fromEntries(
+      [...byProperty.entries()].map(([type, vals]) => [
+        type,
+        { count: vals.length, median_per_pyeong: median(vals) },
+      ])
+    ),
     trend: [...byMonth.entries()]
       .map(([month, vals]) => ({ month, count: vals.length, median_per_pyeong: median(vals) }))
       .sort((a, b) => a.month.localeCompare(b.month)),
@@ -191,6 +213,44 @@ export function mergeItems(existing, incoming) {
   for (const it of existing) map.set(it.id, it)
   for (const it of incoming) map.set(it.id, it)
   return [...map.values()].sort(byDateDesc)
+}
+
+/**
+ * 이번 수집분을 저장된 기존 거래와 합친다.
+ *
+ * 한 번의 수집은 호출 예산 때문에 전국을 다 돌지 못한다. 이번 것만으로 샤드를
+ * 다시 만들면 예산 밖으로 밀린 시군구가 index.json에서 통째로 빠져 화면에서
+ * 사라지므로, 저장 전에 반드시 이 함수를 거쳐야 한다.
+ */
+export async function mergeWithStored(payload, log = () => {}) {
+  try {
+    const existing = await readAllItems()
+    if (existing.length === 0) return payload
+    const merged = mergeItems(existing, payload.items)
+    log(`기존 ${existing.length}건과 병합 → ${merged.length}건 (신규 ${merged.length - existing.length}건)`)
+    return { ...payload, items: merged }
+  } catch (e) {
+    // 병합에 실패해도 이번 수집분만이라도 저장한다(첫 실행 등).
+    log(`기존 데이터 병합 실패, 이번 수집분만 저장합니다: ${e.message}`)
+    return payload
+  }
+}
+
+/**
+ * 샤드를 Blobs에 저장한다.
+ * index.json은 나머지가 모두 올라간 뒤 마지막에 써서, 샤드가 다 올라가기 전의
+ * index를 읽고 빈 결과를 내는 일이 없게 한다.
+ * @returns {Promise<number>} 저장한 샤드 개수
+ */
+export async function writeShardsToStore(store, payload) {
+  const shards = buildShards(payload)
+  const indexShard = shards.find((s) => s.key === 'index.json')
+  for (const { key, value } of shards) {
+    if (key === 'index.json') continue
+    await store.setJSON(key, value)
+  }
+  await store.setJSON('index.json', indexShard.value)
+  return shards.length
 }
 
 /** 메타데이터 + 사전 계산 통계. 오래됐거나 없으면 null. */

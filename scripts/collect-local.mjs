@@ -3,6 +3,7 @@
 //
 //   npm run collect -- --sido 서울 --months 1 --max 20   (빠른 검증)
 //   npm run collect                                       (전체 수집)
+//   npm run collect -- --rebuild                          (API 호출 없이 샤드만 재생성)
 //
 // 키는 .env.local 또는 .env 의 MOLIT_API_KEY 에서 읽는다.
 // 결과는 netlify/functions/data/ 아래에 조회용 샤드로 저장되고,
@@ -11,7 +12,7 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { collectTrades } from '../netlify/functions/lib/collect.mjs'
-import { buildShards, readAllItems, mergeItems } from '../netlify/functions/lib/storage.mjs'
+import { buildShards, readAllItems, mergeItems, readShard } from '../netlify/functions/lib/storage.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ROOT = resolve(__dirname, '..')
@@ -43,7 +44,46 @@ const fail = (...lines) => {
   process.exitCode = 1
 }
 
+/** 조회용 샤드로 쪼개 저장한다. 한 파일에 몰아두면 요청마다 전체를 파싱하게 된다. */
+const saveShards = async (payload) => {
+  const outDir = resolve(ROOT, 'netlify/functions/data')
+  const shards = buildShards(payload)
+  let bytes = 0
+  for (const { key, value } of shards) {
+    const path = resolve(outDir, key)
+    mkdirSync(dirname(path), { recursive: true })
+    const body = JSON.stringify(value)
+    writeFileSync(path, body, 'utf8')
+    bytes += Buffer.byteLength(body)
+  }
+  console.log(
+    `\n저장 완료: ${outDir}\n  샤드 ${shards.length}개 · 총 ${(bytes / 1024 / 1024).toFixed(1)}MB`
+  )
+}
+
+/**
+ * API를 호출하지 않고 이미 저장된 거래로 샤드만 다시 만든다.
+ * 통계 계산 방식이 바뀌었을 때 하루 호출 한도를 쓰지 않고 반영하기 위한 경로다.
+ */
+const rebuildOnly = async () => {
+  const existing = await readAllItems()
+  if (existing.length === 0) {
+    return fail('저장된 거래가 없습니다. 먼저 수집을 실행하세요.')
+  }
+  console.log(`저장된 ${existing.length.toLocaleString()}건으로 샤드를 다시 만듭니다 (API 호출 없음)`)
+  const idx = (await readShard('index.json')) || {}
+  return saveShards({
+    items: existing,
+    last_update: idx.last_update || new Date().toISOString(),
+    source: idx.source || 'molit',
+    months: idx.months || [],
+    stats: { ...(idx.stats || {}), rebuilt_at: new Date().toISOString() },
+  })
+}
+
 const main = async () => {
+  if (args.includes('--rebuild')) return rebuildOnly()
+
   const serviceKey = readEnvKey('MOLIT_API_KEY')
   if (!serviceKey) {
     return fail(
@@ -121,18 +161,7 @@ const main = async () => {
     }
   }
 
-  // 조회용 샤드로 쪼개 저장한다. 한 파일에 몰아두면 요청마다 전체를 파싱하게 된다.
-  const outDir = resolve(ROOT, 'netlify/functions/data')
-  const shards = buildShards(finalPayload)
-  let bytes = 0
-  for (const { key, value } of shards) {
-    const path = resolve(outDir, key)
-    mkdirSync(dirname(path), { recursive: true })
-    const body = JSON.stringify(value)
-    writeFileSync(path, body, 'utf8')
-    bytes += Buffer.byteLength(body)
-  }
-  const outPath = outDir
+  await saveShards(finalPayload)
 
   if (stats.skipped_services?.length) {
     console.log(
@@ -151,11 +180,6 @@ const main = async () => {
     `\n구성: 매매 ${count((i) => i.deal_type === 'TRADE')}건 · ` +
       `전세 ${count((i) => i.rent_type === 'JEONSE')}건 · ` +
       `월세 ${count((i) => i.rent_type === 'MONTHLY')}건`
-  )
-
-  console.log(
-    `\n저장 완료: ${outPath}\n` +
-      `  샤드 ${shards.length}개 · 총 ${(bytes / 1024 / 1024).toFixed(1)}MB`
   )
 
   const describe = (it) => {

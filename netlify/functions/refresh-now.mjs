@@ -7,7 +7,7 @@
 // 옵션: ?months=1&max_calls=100&sido=서울  (테스트용으로 범위를 줄일 때)
 import { getStore } from '@netlify/blobs'
 import { collectTrades } from './lib/collect.mjs'
-import { buildShards } from './lib/storage.mjs'
+import { mergeWithStored, writeShardsToStore } from './lib/storage.mjs'
 
 const json = (body, status = 200) =>
   new Response(JSON.stringify(body, null, 2), {
@@ -47,15 +47,10 @@ export default async (req) => {
     return json({ ok: false, detail: '수집 0건 — 기존 데이터를 유지합니다.', errors: errors.slice(0, 5) }, 502)
   }
 
-  // index.json은 나머지 샤드가 모두 올라간 뒤 마지막에 쓴다.
-  const store = getStore('trades')
-  const shards = buildShards(payload)
-  const indexShard = shards.find((s) => s.key === 'index.json')
-  for (const { key, value } of shards) {
-    if (key === 'index.json') continue
-    await store.setJSON(key, value)
-  }
-  await store.setJSON('index.json', indexShard.value)
+  // 범위를 좁혀 호출했을 때(?sido=서울 등) 나머지 지역이 index에서 사라지지 않도록
+  // 기존 저장분과 병합한 뒤 저장한다.
+  const finalPayload = await mergeWithStored(payload, (m) => console.log('[refresh-now]', m))
+  await writeShardsToStore(getStore('trades'), finalPayload)
 
   return json({
     ok: true,

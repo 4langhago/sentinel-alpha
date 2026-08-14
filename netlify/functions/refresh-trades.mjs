@@ -1,9 +1,9 @@
 // 실거래가 일일 수집 — Netlify Scheduled Function
 // 매일 WIB(인도네시아) 07:30 = KST 09:30에 실행되어 최근 3개월 실거래를 모아
-// Netlify Blobs("trades" store, key "latest.json")에 저장한다.
+// Netlify Blobs("trades" store)에 조회용 샤드로 저장한다.
 import { getStore } from '@netlify/blobs'
 import { collectTrades } from './lib/collect.mjs'
-import { buildShards } from './lib/storage.mjs'
+import { mergeWithStored, writeShardsToStore } from './lib/storage.mjs'
 
 export default async () => {
   const serviceKey = process.env.MOLIT_API_KEY || ''
@@ -29,17 +29,12 @@ export default async () => {
     return new Response(JSON.stringify({ ok: false, errors: errors.slice(0, 5) }), { status: 200 })
   }
 
-  // 조회용 샤드로 쪼개 저장한다. index.json을 마지막에 써서,
-  // 샤드가 다 올라가기 전의 index를 읽고 빈 결과를 내는 일이 없게 한다.
-  const store = getStore('trades')
-  const shards = buildShards(payload)
-  const indexShard = shards.find((s) => s.key === 'index.json')
-  for (const { key, value } of shards) {
-    if (key === 'index.json') continue
-    await store.setJSON(key, value)
-  }
-  await store.setJSON('index.json', indexShard.value)
-  console.log(`[refresh-trades] 샤드 ${shards.length}개 저장 완료`)
+  // 하루 호출 예산은 전국 계획보다 작아 한 번에 전국을 다 돌지 못한다.
+  // 이번 수집분만으로 샤드를 다시 만들면 밀려난 시군구가 사라지므로 반드시 병합한다.
+  const finalPayload = await mergeWithStored(payload, (m) => console.log('[refresh-trades]', m))
+
+  const count = await writeShardsToStore(getStore('trades'), finalPayload)
+  console.log(`[refresh-trades] 샤드 ${count}개 저장 완료`)
 
   console.log(
     `[refresh-trades] 완료: ${payload.stats.deduped}건 저장 ` +
