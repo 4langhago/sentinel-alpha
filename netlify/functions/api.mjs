@@ -153,15 +153,27 @@ export default async (req) => {
         const all = Object.values(index.sido || {}).filter((s) => s.count > 0)
         if (all.length > 0) {
           const count = all.reduce((a, s) => a + s.count, 0)
+          // 평당가는 지분 거래·면적 0인 건을 뺀 더 작은 모집단에서 나온 값이라
+          // count(전체 매매 건수)로 가중하면 지역별 비중이 어긋난다.
+          // 그 모집단 크기(unit_price_count)로 가중한다. 예전 인덱스에는 없을 수 있어
+          // 없으면 count로 되돌아간다.
+          const unitWeight = (s) => s.unit_price_count ?? s.count
+          const unitCount = all.reduce((a, s) => a + (s.median_per_pyeong > 0 ? unitWeight(s) : 0), 0)
           return json({
             count,
             median_price: Math.round(all.reduce((a, s) => a + s.median_price * s.count, 0) / count),
             avg_price: Math.round(all.reduce((a, s) => a + s.avg_price * s.count, 0) / count),
             min_price: Math.min(...all.map((s) => s.min_price)),
             max_price: Math.max(...all.map((s) => s.max_price)),
-            median_per_pyeong: Math.round(
-              all.reduce((a, s) => a + s.median_per_pyeong * s.count, 0) / count
-            ),
+            median_per_pyeong: unitCount
+              ? Math.round(
+                  all.reduce(
+                    (a, s) => a + (s.median_per_pyeong > 0 ? s.median_per_pyeong * unitWeight(s) : 0),
+                    0
+                  ) / unitCount
+                )
+              : 0,
+            per_property: mergePerProperty(all),
             trend: mergeTrends(all),
             approximate: true,
             source: index.source,
@@ -280,6 +292,29 @@ export default async (req) => {
   }
 
   return json({ detail: 'Not Found' }, 404)
+}
+
+/**
+ * 여러 지역의 종목별 평당가를 건수 가중으로 합친다.
+ * 지역별 중위값의 가중평균이라 전국 중위값의 근사치다(approximate 플래그로 표시).
+ */
+function mergePerProperty(statsList) {
+  const acc = new Map()
+  for (const s of statsList) {
+    for (const [type, v] of Object.entries(s.per_property || {})) {
+      if (!v.count || !v.median_per_pyeong) continue
+      if (!acc.has(type)) acc.set(type, { sum: 0, count: 0 })
+      const e = acc.get(type)
+      e.sum += v.median_per_pyeong * v.count
+      e.count += v.count
+    }
+  }
+  return Object.fromEntries(
+    [...acc.entries()].map(([type, e]) => [
+      type,
+      { count: e.count, median_per_pyeong: Math.round(e.sum / e.count) },
+    ])
+  )
 }
 
 /** 여러 지역의 월별 추이를 건수 가중으로 합친다. */

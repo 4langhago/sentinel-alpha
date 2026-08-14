@@ -265,7 +265,7 @@ const HomePage = () => {
           ) : (
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
               {items.map((item) => (
-                <TradeCard key={item.id} item={item} medianPerPyeong={stats?.median_per_pyeong} />
+                <TradeCard key={item.id} item={item} stats={stats ?? undefined} />
               ))}
             </div>
           )}

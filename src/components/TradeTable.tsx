@@ -1,10 +1,17 @@
 import { Link } from 'react-router-dom'
-import { TradeItem, formatPrice, toPyeong, PROPERTY_LABELS } from '../types/trade'
+import {
+  TradeItem,
+  RegionStats,
+  baselinePerPyeong,
+  formatPrice,
+  toPyeong,
+  PROPERTY_LABELS,
+} from '../types/trade'
 
 interface Props {
   items: TradeItem[]
-  /** 같은 지역 중위 평당가. 주어지면 상대적으로 싼지/비싼지 표시한다. */
-  medianPerPyeong?: number
+  /** 같은 지역 통계. 주어지면 같은 종목 중위 평당가와 비교해 싼지/비싼지 표시한다. */
+  stats?: Pick<RegionStats, 'median_per_pyeong' | 'per_property'>
 }
 
 /**
@@ -12,7 +19,7 @@ interface Props {
  * 한눈에 비교할 수 있게 한다(카드 그리드는 비교 과업에 취약하다).
  * 행 높이 44~48px, 헤더 sticky. 숫자 컬럼은 우정렬 + tabular-nums.
  */
-const TradeTable = ({ items, medianPerPyeong }: Props) => {
+const TradeTable = ({ items, stats }: Props) => {
   const th = (align: 'left' | 'right' = 'left') =>
     `px-3 py-2.5 text-[11px] font-semibold text-slate-500 dark:text-slate-400 whitespace-nowrap ${
       align === 'right' ? 'text-right' : 'text-left'
@@ -38,8 +45,10 @@ const TradeTable = ({ items, medianPerPyeong }: Props) => {
             {items.map((item) => {
               const isRent = item.deal_type === 'RENT'
               const pyeong = toPyeong(item.area)
+              // 같은 종목의 중위 평당가와 비교한다 (상가·토지는 아파트와 스케일이 다르다).
+              const medianPerPyeong = baselinePerPyeong(stats, item.property_type)
               const diffPct =
-                !isRent && medianPerPyeong && medianPerPyeong > 0 && item.price_per_pyeong > 0
+                !isRent && medianPerPyeong > 0 && item.price_per_pyeong > 0
                   ? Math.round(((item.price_per_pyeong - medianPerPyeong) / medianPerPyeong) * 100)
                   : null
               // 전월세는 보증금/월세 기준이라 평당가·중위 대비가 무의미하므로 카드와 동일하게 숨긴다.

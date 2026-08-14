@@ -280,12 +280,12 @@ const SearchPage = () => {
               {/* 모바일/태블릿은 항상 카드. 데스크톱은 view에 따라 카드 또는 조밀 테이블. */}
               <div className={`grid md:grid-cols-2 gap-4 ${view === 'table' ? 'lg:hidden' : ''}`}>
                 {items.map((item) => (
-                  <TradeCard key={item.id} item={item} medianPerPyeong={stats?.median_per_pyeong} />
+                  <TradeCard key={item.id} item={item} stats={stats ?? undefined} />
                 ))}
               </div>
               {view === 'table' && (
                 <div className="hidden lg:block">
-                  <TradeTable items={items} medianPerPyeong={stats?.median_per_pyeong} />
+                  <TradeTable items={items} stats={stats ?? undefined} />
                 </div>
               )}
             </>

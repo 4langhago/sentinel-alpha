@@ -1,20 +1,29 @@
 import { Link } from 'react-router-dom'
 import { Building2, MapPin, Calendar, Layers, Ruler } from 'lucide-react'
-import { TradeItem, formatPrice, toPyeong, PROPERTY_LABELS } from '../types/trade'
+import {
+  TradeItem,
+  RegionStats,
+  baselinePerPyeong,
+  formatPrice,
+  toPyeong,
+  PROPERTY_LABELS,
+} from '../types/trade'
 
 interface Props {
   item: TradeItem
-  /** 같은 지역 중위 평당가. 주어지면 상대적으로 싼지/비싼지 표시한다. */
-  medianPerPyeong?: number
+  /** 같은 지역 통계. 주어지면 같은 종목 중위 평당가와 비교해 싼지/비싼지 표시한다. */
+  stats?: Pick<RegionStats, 'median_per_pyeong' | 'per_property'>
 }
 
-const TradeCard = ({ item, medianPerPyeong }: Props) => {
+const TradeCard = ({ item, stats }: Props) => {
   const isRent = item.deal_type === 'RENT'
   const pyeong = toPyeong(item.area)
 
-  // 지역 중위 평당가 대비 편차 (매매만 의미 있음)
+  // 지역 중위 평당가 대비 편차 (매매만 의미 있음).
+  // 아파트를 상가·토지가 섞인 중위값과 비교하면 값이 무의미해지므로 같은 종목끼리 비교한다.
+  const medianPerPyeong = baselinePerPyeong(stats, item.property_type)
   const diffPct =
-    !isRent && medianPerPyeong && medianPerPyeong > 0 && item.price_per_pyeong > 0
+    !isRent && medianPerPyeong > 0 && item.price_per_pyeong > 0
       ? Math.round(((item.price_per_pyeong - medianPerPyeong) / medianPerPyeong) * 100)
       : null
 

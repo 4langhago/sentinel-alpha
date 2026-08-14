@@ -81,11 +81,31 @@ export interface RegionStats {
   min_price: number
   max_price: number
   median_per_pyeong: number
+  /**
+   * 종목별 평당가. 아파트·오피스텔·상가·토지는 평당가 스케일이 달라서
+   * "지역 중위 대비 %"를 낼 때는 같은 종목끼리 비교해야 한다.
+   * 인덱스가 갱신되기 전이면 없을 수 있다.
+   */
+  per_property?: Partial<Record<PropertyType, { count: number; median_per_pyeong: number }>>
   trend: TrendPoint[]
   source: string
   is_live: boolean
   last_update: string | null
   message?: string
+}
+
+/**
+ * 거래 한 건을 비교할 기준 평당가를 고른다.
+ * 같은 종목의 중위값이 있으면 그것을, 없으면 전체 중위값으로 되돌아간다.
+ */
+export const baselinePerPyeong = (
+  stats: Pick<RegionStats, 'median_per_pyeong' | 'per_property'> | undefined,
+  propertyType: PropertyType
+): number => {
+  if (!stats) return 0
+  const own = stats.per_property?.[propertyType]
+  if (own && own.count > 0 && own.median_per_pyeong > 0) return own.median_per_pyeong
+  return stats.median_per_pyeong || 0
 }
 
 export interface ComplexDetail {
