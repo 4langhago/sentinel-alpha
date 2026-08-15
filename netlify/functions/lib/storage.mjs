@@ -170,15 +170,33 @@ const getBlobStore = async () => {
   return blobStore
 }
 
-/** 샤드 하나를 읽는다. Blobs → 로컬 파일 순. 없으면 null. */
-export async function readShard(key) {
+/**
+ * 샤드 하나를 읽는다. Blobs → 로컬 파일 순.
+ *
+ * Blobs 읽기가 일시적으로 실패하면 최대 2회 재시도한다. 여기서 실패를
+ * 조용히 삼키고 null을 반환하면, 이 샤드가 정말로 없는 것인지 일시적
+ * 네트워크 문제인지 호출자가 구분할 수 없다. readAllItems()처럼 "존재해야
+ * 하는" 샤드를 순회하는 코드는 이 차이를 알아야 저장된 데이터를 실수로
+ * 지우지 않는다. requireExists=true면 Blobs 읽기가 끝내 실패했을 때
+ * null 대신 예외를 던진다 (로컬 파일 폴백은 여전히 시도한다 — 로컬 개발
+ * 환경에는 Blobs 자체가 없는 게 정상이라 이 경로는 실패로 치지 않는다).
+ */
+export async function readShard(key, { requireExists = false } = {}) {
   const store = await getBlobStore()
   if (store) {
-    try {
-      const v = await store.get(key, { type: 'json' })
-      if (v) return v
-    } catch {
-      /* 로컬 폴백으로 진행 */
+    let lastErr = null
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const v = await store.get(key, { type: 'json' })
+        if (v) return v
+        lastErr = null // 정상 응답인데 값이 없음(진짜로 없는 키) — 재시도 의미 없음
+        break
+      } catch (e) {
+        lastErr = e
+      }
+    }
+    if (lastErr && requireExists) {
+      throw new Error(`샤드 읽기 실패(${key}): ${lastErr.message}`)
     }
   }
   try {
@@ -195,14 +213,20 @@ export async function readShard(key) {
  * 저장된 전체 거래를 시군구 샤드에서 되짚어 복원한다.
  * 시군구 샤드는 잘라내지 않고 전부 담고 있으므로 여기서 원본 전체가 나온다.
  * 일부 지역만 추가 수집할 때 기존 데이터를 잃지 않고 병합하는 데 쓴다.
+ *
+ * index.json에 등록된 시군구 샤드는 전부 읽혀야 한다. 하나라도 읽기가
+ * 끝내 실패하면(일시적 네트워크 문제 등) 예외를 던져 호출자가 이 결과를
+ * "전체"로 오인해 나머지 지역을 지워버리지 않게 한다.
+ * (readShard의 requireExists 옵션으로 이 실패/누락을 구분한다.)
  */
 export async function readAllItems() {
   const idx = await readShard('index.json')
   if (!idx?.sgg) return []
   const all = []
   for (const code of Object.keys(idx.sgg)) {
-    const shard = await readShard(`sgg/${code}.json`)
-    if (shard?.items) all.push(...shard.items)
+    const shard = await readShard(`sgg/${code}.json`, { requireExists: true })
+    if (!shard?.items) throw new Error(`시군구 샤드 누락: sgg/${code}.json`)
+    all.push(...shard.items)
   }
   return all
 }
@@ -221,19 +245,25 @@ export function mergeItems(existing, incoming) {
  * 한 번의 수집은 호출 예산 때문에 전국을 다 돌지 못한다. 이번 것만으로 샤드를
  * 다시 만들면 예산 밖으로 밀린 시군구가 index.json에서 통째로 빠져 화면에서
  * 사라지므로, 저장 전에 반드시 이 함수를 거쳐야 한다.
+ *
+ * readAllItems()가 실패하면(샤드 읽기 오류) "이번 수집분만이라도 저장"하지
+ * 않는다 — 그러면 방금 실패로 못 읽은 기존 지역들이 index에서 통째로
+ * 사라지는, 데이터 유실이 오히려 더 큰 사고가 된다. 대신 null을 반환해
+ * 호출자가 이번 저장을 통째로 건너뛰게 한다. 이전 인덱스는 그대로 남는다.
+ * @returns {Promise<object|null>} 병합된 payload, 또는 저장을 건너뛰라는 null
  */
 export async function mergeWithStored(payload, log = () => {}) {
+  let existing
   try {
-    const existing = await readAllItems()
-    if (existing.length === 0) return payload
-    const merged = mergeItems(existing, payload.items)
-    log(`기존 ${existing.length}건과 병합 → ${merged.length}건 (신규 ${merged.length - existing.length}건)`)
-    return { ...payload, items: merged }
+    existing = await readAllItems()
   } catch (e) {
-    // 병합에 실패해도 이번 수집분만이라도 저장한다(첫 실행 등).
-    log(`기존 데이터 병합 실패, 이번 수집분만 저장합니다: ${e.message}`)
-    return payload
+    log(`기존 데이터를 온전히 읽지 못해 이번 저장을 건너뜁니다(기존 데이터 보존): ${e.message}`)
+    return null
   }
+  if (existing.length === 0) return payload
+  const merged = mergeItems(existing, payload.items)
+  log(`기존 ${existing.length}건과 병합 → ${merged.length}건 (신규 ${merged.length - existing.length}건)`)
+  return { ...payload, items: merged }
 }
 
 /**
@@ -251,6 +281,29 @@ export async function writeShardsToStore(store, payload) {
   }
   await store.setJSON('index.json', indexShard.value)
   return shards.length
+}
+
+/**
+ * index.json이 아니라 "있을 수 있는 모든 시군구 코드"를 직접 순회해 데이터를
+ * 되짚는다. index.json이 불완전한 상태로 저장된 적이 있다면(과거 버그 등)
+ * readAllItems()는 그 불완전한 목록만 복원하지만, 이 함수는 개별 시군구
+ * 샤드 파일이 남아있는 한 index 목록과 무관하게 전부 찾아낸다.
+ * @param {{code:string}[]} allCodes 점검할 전체 시군구 코드 목록
+ */
+export async function reconcileFromShards(allCodes) {
+  const all = []
+  const found = []
+  const missing = []
+  for (const { code } of allCodes) {
+    const shard = await readShard(`sgg/${code}.json`)
+    if (shard?.items?.length) {
+      all.push(...shard.items)
+      found.push(code)
+    } else {
+      missing.push(code)
+    }
+  }
+  return { items: all, found, missing }
 }
 
 /** 메타데이터 + 사전 계산 통계. 오래됐거나 없으면 null. */

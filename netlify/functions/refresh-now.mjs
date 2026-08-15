@@ -5,9 +5,13 @@
 //   curl -X POST "https://<사이트>/trigger/refresh" -H "X-Refresh-Token: <REFRESH_TOKEN>"
 //
 // 옵션: ?months=1&max_calls=100&sido=서울  (테스트용으로 범위를 줄일 때)
+//   ?reconcile=1  API를 호출하지 않고, 남아있는 시군구 샤드 파일을 전부 직접
+//                 읽어 index.json을 다시 만든다. index가 과거 버그로 일부
+//                 지역을 잃어버렸을 때 재수집 없이 복구하는 용도.
 import { getStore } from '@netlify/blobs'
 import { collectTrades } from './lib/collect.mjs'
-import { mergeWithStored, writeShardsToStore } from './lib/storage.mjs'
+import { mergeWithStored, writeShardsToStore, reconcileFromShards } from './lib/storage.mjs'
+import { ALL_SGG } from './lib/regionCodes.mjs'
 
 const json = (body, status = 200) =>
   new Response(JSON.stringify(body, null, 2), {
@@ -25,10 +29,24 @@ export default async (req) => {
   const provided = req.headers.get('x-refresh-token') || ''
   if (provided !== expected) return json({ detail: '인증 실패' }, 401)
 
+  const url = new URL(req.url)
+
+  if (url.searchParams.get('reconcile') === '1') {
+    const { items, found, missing } = await reconcileFromShards(ALL_SGG)
+    if (items.length === 0) return json({ ok: false, detail: '복구할 샤드가 없습니다.' }, 404)
+    const count = await writeShardsToStore(getStore('trades'), {
+      items,
+      last_update: new Date().toISOString(),
+      source: 'molit',
+      months: [],
+      stats: { reconciled_at: new Date().toISOString() },
+    })
+    return json({ ok: true, reconciled: true, items: items.length, sgg_found: found.length, sgg_missing: missing, shards: count })
+  }
+
   const serviceKey = process.env.MOLIT_API_KEY || ''
   if (!serviceKey) return json({ detail: 'MOLIT_API_KEY가 설정되지 않았습니다.' }, 503)
 
-  const url = new URL(req.url)
   const months = Math.min(12, Math.max(1, Number(url.searchParams.get('months') || 3)))
   const maxCalls = Math.min(1000, Math.max(1, Number(url.searchParams.get('max_calls') || 900)))
   const sidoParam = url.searchParams.get('sido')
@@ -50,6 +68,14 @@ export default async (req) => {
   // 범위를 좁혀 호출했을 때(?sido=서울 등) 나머지 지역이 index에서 사라지지 않도록
   // 기존 저장분과 병합한 뒤 저장한다.
   const finalPayload = await mergeWithStored(payload, (m) => console.log('[refresh-now]', m))
+  if (!finalPayload) {
+    // 기존 데이터를 온전히 읽지 못했다 — 이번 수집분을 버려서라도 기존 데이터를 지키지 않는다.
+    // 여기서 그냥 저장했다면 방금 못 읽은 지역들이 index에서 통째로 사라졌을 것이다.
+    return json(
+      { ok: false, reason: 'merge_check_failed', detail: '기존 데이터를 온전히 읽지 못해 저장을 건너뛰었습니다. 다시 시도해주세요.' },
+      503
+    )
+  }
   await writeShardsToStore(getStore('trades'), finalPayload)
 
   return json({

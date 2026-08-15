@@ -32,6 +32,12 @@ export default async () => {
   // 하루 호출 예산은 전국 계획보다 작아 한 번에 전국을 다 돌지 못한다.
   // 이번 수집분만으로 샤드를 다시 만들면 밀려난 시군구가 사라지므로 반드시 병합한다.
   const finalPayload = await mergeWithStored(payload, (m) => console.log('[refresh-trades]', m))
+  if (!finalPayload) {
+    // 기존 데이터를 온전히 읽지 못했다 — 저장을 건너뛴다. 이번 수집분은 버려지지만
+    // 그보다 훨씬 큰 기존 데이터를 지우는 사고를 피한다. 다음 스케줄 실행에서 재시도된다.
+    console.error('[refresh-trades] 기존 데이터 확인 실패로 저장을 건너뜁니다. 다음 실행에서 재시도됩니다.')
+    return new Response(JSON.stringify({ ok: false, reason: 'merge_check_failed' }), { status: 200 })
+  }
 
   const count = await writeShardsToStore(getStore('trades'), finalPayload)
   console.log(`[refresh-trades] 샤드 ${count}개 저장 완료`)
