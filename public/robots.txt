@@ -3,4 +3,4 @@ Allow: /
 Disallow: /api/
 Disallow: /admin/
 
-Sitemap: https://your-project.web.app/sitemap.xml
+Sitemap: https://auction-insight-kr.netlify.app/sitemap.xml

@@ -1,0 +1,16 @@
+{
+  "name": "시세 인사이트 | 국토교통부 실거래가 기반 부동산 시세 분석",
+  "short_name": "시세 인사이트",
+  "description": "국토교통부 실거래가로 전국 아파트·오피스텔의 실제 거래가와 평당가 추이를 확인하세요.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#ffffff",
+  "theme_color": "#7c3aed",
+  "lang": "ko",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}

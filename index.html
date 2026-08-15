@@ -7,17 +7,17 @@
     <!-- Primary Meta -->
     <title>시세 인사이트 | 국토교통부 실거래가 기반 부동산 시세 분석</title>
     <meta name="description" content="국토교통부 실거래가로 전국 아파트·오피스텔의 실제 거래가와 평당가 추이를 확인하세요. 지역별 시세 통계와 투자 수익률 계산까지." />
-    <meta name="keywords" content="법원경매,경매검색,부동산경매,경매투자,경매분석,AI경매,낙찰가예측,수익률분석" />
+    <meta name="keywords" content="실거래가,아파트시세,부동산시세,국토교통부실거래가,평당가,아파트매매,전월세" />
     <meta name="author" content="시세 인사이트" />
     <meta name="robots" content="index, follow" />
-    <link rel="canonical" href="https://your-project.web.app/" />
+    <link rel="canonical" href="https://auction-insight-kr.netlify.app/" />
 
     <!-- Open Graph -->
     <meta property="og:type" content="website" />
-    <meta property="og:url" content="https://your-project.web.app/" />
+    <meta property="og:url" content="https://auction-insight-kr.netlify.app/" />
     <meta property="og:title" content="시세 인사이트 | 실거래가 기반 부동산 시세 분석" />
     <meta property="og:description" content="전국 아파트·오피스텔 실거래가 분석. 평당가 추이, 지역 시세 통계, 수익률 계산." />
-    <meta property="og:image" content="https://your-project.web.app/og-image.png" />
+    <meta property="og:image" content="https://auction-insight-kr.netlify.app/og-image.png" />
     <meta property="og:locale" content="ko_KR" />
     <meta property="og:site_name" content="시세 인사이트" />
 
@@ -25,7 +25,7 @@
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="시세 인사이트 | 실거래가 기반 부동산 시세 분석" />
     <meta name="twitter:description" content="전국 아파트·오피스텔 실거래가 분석. 평당가 추이, 지역 시세 통계, 수익률 계산." />
-    <meta name="twitter:image" content="https://your-project.web.app/og-image.png" />
+    <meta name="twitter:image" content="https://auction-insight-kr.netlify.app/og-image.png" />
 
     <!-- JSON-LD Structured Data -->
     <script type="application/ld+json">
@@ -34,26 +34,27 @@
       "@type": "WebApplication",
       "name": "시세 인사이트",
       "description": "국토교통부 실거래가 기반 부동산 시세 분석 플랫폼",
-      "url": "https://your-project.web.app",
+      "url": "https://auction-insight-kr.netlify.app",
       "applicationCategory": "FinanceApplication",
       "operatingSystem": "Web",
       "offers": { "@type": "Offer", "price": "0", "priceCurrency": "KRW" }
     }
     </script>
 
-    <!-- Favicon -->
+    <!-- 파비콘 / 앱 아이콘 -->
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 
-    <!-- Preconnect -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap" rel="stylesheet" />
+    <!-- PWA: 홈 화면에 추가해 앱처럼 실행할 수 있게 한다 -->
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#7c3aed" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="시세 인사이트" />
+    <meta name="mobile-web-app-capable" content="yes" />
 
-    <!-- Google Analytics 4 (ID는 환경변수로 주입) -->
-    <script>
-      window.GA4_ID = '%VITE_GA4_ID%';
-    </script>
+    <!-- Pretendard Variable을 self-host로 쓰므로(src/index.css) 외부 Google Fonts는 쓰지 않는다 -->
   </head>
   <body>
     <div id="root"></div>
