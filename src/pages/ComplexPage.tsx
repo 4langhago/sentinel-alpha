@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { ArrowLeft, Building2, MapPin, Calendar, Heart, TrendingUp, ShieldAlert, Info } from 'lucide-react'
 import { tradeApi } from '../services/tradeApi'
-import { ComplexDetail, formatPrice, toPyeong, TrendPoint, PROPERTY_LABELS } from '../types/trade'
+import { ComplexDetail, estimateSupplyPyeong, formatPrice, toPyeong, TrendPoint, PROPERTY_LABELS } from '../types/trade'
 import PriceTrendChart from '../components/PriceTrendChart'
 import DataSourceBadge from '../components/DataSourceBadge'
 import { useAuth } from '../contexts/AuthContext'
@@ -133,6 +133,17 @@ const ComplexPage = () => {
                 <Building2 className="w-4 h-4" />
                 {PROPERTY_LABELS[detail.property_type] || detail.property_type}
               </span>
+              {(() => {
+                const rep = estimateSupplyPyeong(detail.history[0]?.area ?? 0, detail.property_type)
+                return rep !== null ? (
+                  <span
+                    className="text-xs text-gray-400 dark:text-gray-500"
+                    title="공급면적 기준 통상 평형 추정치입니다. 실제 전용률은 세대마다 달라 다를 수 있습니다."
+                  >
+                    통상 {rep}평형대
+                  </span>
+                ) : null
+              })()}
             </p>
           </div>
           <button
@@ -266,7 +277,12 @@ const ComplexPage = () => {
                 </span>
               </div>
               <div className="mt-1 text-xs text-gray-500 dark:text-gray-400 tabular-nums">
-                {h.deal_date} · {h.area}㎡({toPyeong(h.area)}평) · {h.floor}층
+                {h.deal_date} · 전용 {h.area}㎡({toPyeong(h.area)}평)
+                {(() => {
+                  const sp = estimateSupplyPyeong(h.area, h.property_type)
+                  return sp !== null ? ` · 통상 ${sp}평형` : ''
+                })()}{' '}
+                · {h.floor}층
                 {h.price_per_pyeong > 0 &&
                   ` · 평당 ${Math.round(h.price_per_pyeong / 10000).toLocaleString()}만원`}
               </div>
@@ -280,7 +296,12 @@ const ComplexPage = () => {
               <tr>
                 <th className="text-left font-medium px-6 py-3">거래일</th>
                 <th className="text-left font-medium px-4 py-3">구분</th>
-                <th className="text-right font-medium px-4 py-3">전용면적</th>
+                <th
+                  className="text-right font-medium px-4 py-3"
+                  title="전용면적(실거래 기준) · 괄호 안은 흔히 부르는 공급면적 기준 평형 추정치"
+                >
+                  전용면적
+                </th>
                 <th className="text-right font-medium px-4 py-3">층</th>
                 <th className="text-right font-medium px-4 py-3">거래금액</th>
                 <th className="text-right font-medium px-6 py-3">평당가</th>
@@ -303,6 +324,17 @@ const ComplexPage = () => {
                   </td>
                   <td className="px-4 py-3 text-right text-gray-600 dark:text-gray-300">
                     {h.area}㎡ ({toPyeong(h.area)}평)
+                    {(() => {
+                      const sp = estimateSupplyPyeong(h.area, h.property_type)
+                      return sp !== null ? (
+                        <span
+                          className="text-gray-400 dark:text-gray-500 ml-1"
+                          title="공급면적 기준 통상 평형 추정치입니다. 실제 전용률은 세대마다 달라 다를 수 있습니다."
+                        >
+                          · {sp}평형
+                        </span>
+                      ) : null
+                    })()}
                   </td>
                   <td className="px-4 py-3 text-right text-gray-600 dark:text-gray-300">{h.floor}층</td>
                   <td className="px-4 py-3 text-right font-semibold text-gray-900 dark:text-white">

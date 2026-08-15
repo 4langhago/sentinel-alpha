@@ -3,6 +3,7 @@ import {
   TradeItem,
   RegionStats,
   baselinePerPyeong,
+  estimateSupplyPyeong,
   formatPrice,
   toPyeong,
   PROPERTY_LABELS,
@@ -33,7 +34,9 @@ const TradeTable = ({ items, stats }: Props) => {
             <tr>
               <th className={th()}>단지명</th>
               <th className={th()}>지역</th>
-              <th className={th('right')}>전용면적</th>
+              <th className={th('right')} title="전용면적(실거래 기준) · 괄호 안은 흔히 부르는 공급면적 기준 평형 추정치">
+                전용면적
+              </th>
               <th className={th('right')}>층</th>
               <th className={th('right')}>거래일</th>
               <th className={th('right')}>거래금액</th>
@@ -45,6 +48,8 @@ const TradeTable = ({ items, stats }: Props) => {
             {items.map((item) => {
               const isRent = item.deal_type === 'RENT'
               const pyeong = toPyeong(item.area)
+              // "34평 아파트"처럼 사람들이 실제로 부르는 평형은 전용면적이 아니라 공급면적 기준이다.
+              const supplyPyeong = estimateSupplyPyeong(item.area, item.property_type)
               // 같은 종목의 중위 평당가와 비교한다 (상가·토지는 아파트와 스케일이 다르다).
               const medianPerPyeong = baselinePerPyeong(stats, item.property_type)
               const diffPct =
@@ -73,6 +78,14 @@ const TradeTable = ({ items, stats }: Props) => {
                   </td>
                   <td className="px-3 py-2.5 text-right text-slate-600 dark:text-slate-300 whitespace-nowrap tabular-nums">
                     {item.area}㎡ ({pyeong}평)
+                    {supplyPyeong !== null && (
+                      <span
+                        className="text-slate-400 dark:text-slate-500 ml-1"
+                        title="공급면적 기준 통상 평형 추정치입니다. 실제 전용률은 단지·세대마다 달라 다를 수 있습니다."
+                      >
+                        · {supplyPyeong}평형
+                      </span>
+                    )}
                   </td>
                   <td className="px-3 py-2.5 text-right text-slate-600 dark:text-slate-300 whitespace-nowrap tabular-nums">
                     {item.property_type !== 'LAND' && item.floor > 0 ? `${item.floor}층` : '-'}

@@ -167,6 +167,30 @@ export const SORT_LABELS: Record<NonNullable<TradeSearchParams['sort']>, string>
 /** ㎡ → 평 */
 export const toPyeong = (area: number): number => Math.round((area / 3.305785) * 10) / 10
 
+/**
+ * 실거래가는 전용면적만 제공한다. 하지만 사람들이 일상적으로 부르는
+ * "OO평"(예: 34평 아파트)은 전용면적이 아니라 공급면적(전용+공용+주차장 등)
+ * 기준이라, 전용면적을 그대로 평으로 환산한 값과는 다르다.
+ * 예: 전용 84.98㎡는 흔히 "34평형"으로 불리지만 전용면적만 평으로
+ * 바꾸면 25.7평이 되어 훨씬 작아 보인다 — 이 괴리가 사용자 혼란의 원인.
+ *
+ * 단지·세대별 실제 전용률(전용면적/공급면적)은 제각각이라 정확히 계산할
+ * 수 없다. 아파트·오피스텔의 통상적인 평균 전용률로 근사한 "통상 평형"을
+ * 별도로 보여줘 실제 매물 정보와 비교할 기준을 준다. 상가·토지는 이런
+ * 관행적 표준 전용률이 없어 추정하지 않는다.
+ *
+ * @returns 통상적으로 불리는 평형(정수), 추정할 수 없으면 null
+ */
+const SUPPLY_RATIO: Partial<Record<PropertyType, number>> = {
+  APARTMENT: 0.75, // 예: 전용 84㎡ → 약 34평형("국민평형")
+  OFFICETEL: 0.5, // 오피스텔은 전용률이 아파트보다 훨씬 낮다(통상 40~55%)
+}
+export const estimateSupplyPyeong = (area: number, propertyType: PropertyType): number | null => {
+  const ratio = SUPPLY_RATIO[propertyType]
+  if (!ratio || area <= 0) return null
+  return Math.round(area / 3.305785 / ratio)
+}
+
 /** 원 단위 금액을 "12억 3,400만원" 형태로 */
 export const formatPrice = (won: number): string => {
   if (!won) return '-'

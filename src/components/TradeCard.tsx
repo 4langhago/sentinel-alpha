@@ -4,6 +4,7 @@ import {
   TradeItem,
   RegionStats,
   baselinePerPyeong,
+  estimateSupplyPyeong,
   formatPrice,
   toPyeong,
   PROPERTY_LABELS,
@@ -18,6 +19,8 @@ interface Props {
 const TradeCard = ({ item, stats }: Props) => {
   const isRent = item.deal_type === 'RENT'
   const pyeong = toPyeong(item.area)
+  // "34평 아파트"처럼 사람들이 실제로 부르는 평형은 전용면적이 아니라 공급면적 기준이다.
+  const supplyPyeong = estimateSupplyPyeong(item.area, item.property_type)
 
   // 지역 중위 평당가 대비 편차 (매매만 의미 있음).
   // 아파트를 상가·토지가 섞인 중위값과 비교하면 값이 무의미해지므로 같은 종목끼리 비교한다.
@@ -64,7 +67,15 @@ const TradeCard = ({ item, stats }: Props) => {
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
         <span className="inline-flex items-center gap-1">
           <Ruler className="w-3.5 h-3.5" />
-          {item.area}㎡ ({pyeong}평)
+          전용 {item.area}㎡ ({pyeong}평)
+          {supplyPyeong !== null && (
+            <span
+              className="text-gray-400 dark:text-gray-500"
+              title="공급면적 기준 통상 평형 추정치입니다. 실제 전용률은 단지·세대마다 달라 다를 수 있습니다."
+            >
+              · 통상 {supplyPyeong}평형
+            </span>
+          )}
         </span>
         {/* 토지는 층 개념이 없다 */}
         {item.property_type !== 'LAND' && item.floor > 0 && (

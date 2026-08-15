@@ -17,12 +17,18 @@ const PRICE_RANGES = [
   { label: '20억 이상', min: 2_000_000_000, max: undefined },
 ]
 
+// 실거래는 전용면적(㎡)만 주지만, 사람들은 "20평대/30평대"처럼 공급면적
+// 기준 평형으로 아파트를 찾는다(예: 국민평형은 전용 84㎡인데 흔히 "34평형"
+// 이라 부른다). 여기 구간은 아파트의 통상 전용률(75%)로 역산해, 사람들이
+// 실제로 찾는 평형대에 맞도록 경계를 잡았다 — 전용면적을 그대로 3.3으로
+// 나눈 값(예: 84㎡→25평)으로 구간을 나누면 "30평대"를 눌러도 국민평형이
+// 걸리지 않는 혼란이 생긴다.
 const AREA_RANGES = [
   { label: '전체', min: undefined, max: undefined },
-  { label: '~20평', min: 0, max: 66 },
-  { label: '20~30평', min: 66, max: 99 },
-  { label: '30~40평', min: 99, max: 132 },
-  { label: '40평~', min: 132, max: undefined },
+  { label: '20평대 이하', min: 0, max: 74 },
+  { label: '30평대', min: 74, max: 99 },
+  { label: '40평대', min: 99, max: 124 },
+  { label: '50평대 이상', min: 124, max: undefined },
 ]
 
 const chip = (active: boolean) =>
@@ -117,7 +123,12 @@ const TradeFilters = ({ value, onChange }: Props) => {
 
       {/* 면적 */}
       <div>
-        <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-2">전용면적</p>
+        <p
+          className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-2"
+          title="흔히 부르는 공급면적 기준 평형대입니다(전용면적 기준 필터링, 통상 전용률로 환산). 단지·세대에 따라 실제와 다를 수 있습니다."
+        >
+          평형대 <span className="font-normal text-slate-400">(공급면적 기준, 추정)</span>
+        </p>
         <div className="flex flex-wrap gap-2">
           {AREA_RANGES.map((r) => (
             <button
