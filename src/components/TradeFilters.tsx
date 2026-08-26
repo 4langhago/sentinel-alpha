@@ -41,7 +41,9 @@ const chip = (active: boolean) =>
 const TradeFilters = ({ value, onChange }: Props) => {
   const [regions, setRegions] = useState<SidoRegion[]>([])
   const [keyword, setKeyword] = useState(value.q || '')
-  const [expanded, setExpanded] = useState(false)
+  // 지역·가격·평형·준공연도 상세 조건은 첫 화면부터 항상 펼쳐서 보여준다.
+  // 모바일 하단 시트는 화면이 좁아 계속 펼쳐두면 목록이 안 보이므로 그때만 토글로 연다.
+  const [mobileSheetOpen, setMobileSheetOpen] = useState(false)
 
   useEffect(() => {
     tradeApi.regions().then(setRegions)
@@ -225,9 +227,10 @@ const TradeFilters = ({ value, onChange }: Props) => {
               </option>
             ))}
           </select>
+          {/* 모바일/태블릿에서만 보이는 토글 — 데스크톱은 아래에 항상 펼쳐져 있다 */}
           <button
-            onClick={() => setExpanded((v) => !v)}
-            className="inline-flex items-center gap-1 text-sm font-semibold text-slate-600 dark:text-slate-300 hover:text-primary-600"
+            onClick={() => setMobileSheetOpen(true)}
+            className="lg:hidden inline-flex items-center gap-1 text-sm font-semibold text-slate-600 dark:text-slate-300 hover:text-primary-600"
           >
             <SlidersHorizontal className="w-4 h-4" />
             상세
@@ -240,22 +243,22 @@ const TradeFilters = ({ value, onChange }: Props) => {
         </div>
       </div>
 
-      {/* 데스크톱: 기존처럼 같은 카드 안에 인라인으로 펼침 */}
-      {expanded && <div className="hidden lg:block space-y-4 pt-2 border-t border-slate-100 dark:border-slate-700">{filterBody}</div>}
+      {/* 데스크톱/태블릿: 첫 화면부터 항상 펼쳐서 보여준다 (더 이상 토글 뒤에 숨기지 않음) */}
+      <div className="hidden lg:block space-y-4 pt-2 border-t border-slate-100 dark:border-slate-700">{filterBody}</div>
 
-      {/* 모바일/태블릿: 하단 시트로 띄운다 — 인라인으로 펼치면 목록까지 스크롤이 너무 길어진다 */}
-      {expanded && (
+      {/* 모바일: 화면이 좁아 상시 펼치면 목록이 안 보이므로 하단 시트로만 제공 */}
+      {mobileSheetOpen && (
         <div className="lg:hidden fixed inset-0 z-40">
           <button
             aria-label="필터 닫기"
-            onClick={() => setExpanded(false)}
+            onClick={() => setMobileSheetOpen(false)}
             className="absolute inset-0 bg-black/40"
           />
           <div className="absolute inset-x-0 bottom-0 max-h-[80vh] overflow-y-auto bg-white dark:bg-slate-800 rounded-t-2xl p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] space-y-4">
             <div className="flex items-center justify-between">
               <p className="font-bold text-slate-900 dark:text-white">상세 필터</p>
               <button
-                onClick={() => setExpanded(false)}
+                onClick={() => setMobileSheetOpen(false)}
                 className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
                 aria-label="닫기"
               >
@@ -264,7 +267,7 @@ const TradeFilters = ({ value, onChange }: Props) => {
             </div>
             {filterBody}
             <button
-              onClick={() => setExpanded(false)}
+              onClick={() => setMobileSheetOpen(false)}
               className="w-full py-3 rounded-xl bg-primary-600 text-white font-semibold text-sm"
             >
               결과 보기
