@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { tradeApi } from '../services/tradeApi'
-import { TradeItem, TradeSearchParams } from '../types/trade'
+import { TradeItem, TradeSearchParams, TradeFacets } from '../types/trade'
 
 const POLL_INTERVAL_MS = 5 * 60_000 // 실거래는 일 1회 갱신이라 5분 폴링이면 충분
 
@@ -14,6 +14,8 @@ export interface TradesState {
   scope: string | null
   scopeTruncated: boolean
   scopeSize: number
+  /** 현재 조건 하 종목별·용도별 건수(용도 칩 구성용). 서버가 안 주면 null. */
+  facets: TradeFacets | null
   /** 서버가 데이터를 마지막으로 수집한 시각 */
   lastUpdate: string | null
   /** 브라우저가 마지막으로 조회한 시각 */
@@ -37,6 +39,7 @@ export const useTrades = (params: TradeSearchParams = {}): TradesState => {
   const [scope, setScope] = useState<string | null>(null)
   const [scopeTruncated, setScopeTruncated] = useState(false)
   const [scopeSize, setScopeSize] = useState(0)
+  const [facets, setFacets] = useState<TradeFacets | null>(null)
   const [lastUpdate, setLastUpdate] = useState<string | null>(null)
   const [fetchedAt, setFetchedAt] = useState<Date | null>(null)
   const [loading, setLoading] = useState(true)
@@ -58,6 +61,7 @@ export const useTrades = (params: TradeSearchParams = {}): TradesState => {
       setScope(result.scope)
       setScopeTruncated(result.scopeTruncated)
       setScopeSize(result.scopeSize)
+      setFacets(result.facets ?? null)
       setLastUpdate(result.lastUpdate)
       setFetchedAt(new Date())
       setError(null)
@@ -88,7 +92,7 @@ export const useTrades = (params: TradeSearchParams = {}): TradesState => {
   }, [fetchData])
 
   return {
-    items, total, totalPages, isLive, source, scope, scopeTruncated, scopeSize,
+    items, total, totalPages, isLive, source, scope, scopeTruncated, scopeSize, facets,
     lastUpdate, fetchedAt, loading, error, refresh: fetchData,
   }
 }

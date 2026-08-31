@@ -15,6 +15,7 @@
     "dev:all": "concurrently -n api,web -c cyan,green \"node scripts/dev-api.mjs\" \"vite\"",
     "dev:mobile": "concurrently -n api,web -c cyan,green \"node scripts/dev-api.mjs\" \"vite --host\"",
     "collect": "node scripts/collect-local.mjs",
+    "collect:auction": "node scripts/collect-auctions-local.mjs",
     "onbid:dump": "node scripts/dump-onbid-sample.mjs",
     "onbid:probe": "node scripts/probe-onbid.mjs"
   },

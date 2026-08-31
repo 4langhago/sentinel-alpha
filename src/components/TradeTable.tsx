@@ -3,16 +3,20 @@ import {
   TradeItem,
   RegionStats,
   baselinePerPyeong,
-  estimateSupplyPyeong,
+  formatArea,
   formatPrice,
-  toPyeong,
+  AreaUnit,
+  AREA_UNIT_LABELS,
   PROPERTY_LABELS,
+  hasComplexPage,
 } from '../types/trade'
 
 interface Props {
   items: TradeItem[]
   /** 같은 지역 통계. 주어지면 같은 종목 중위 평당가와 비교해 싼지/비싼지 표시한다. */
   stats?: Pick<RegionStats, 'median_per_pyeong' | 'per_property'>
+  /** 면적 표기 단위. 열 전체가 같은 단위여야 위아래 비교가 된다. */
+  areaUnit?: AreaUnit
 }
 
 /**
@@ -20,7 +24,7 @@ interface Props {
  * 한눈에 비교할 수 있게 한다(카드 그리드는 비교 과업에 취약하다).
  * 행 높이 44~48px, 헤더 sticky. 숫자 컬럼은 우정렬 + tabular-nums.
  */
-const TradeTable = ({ items, stats }: Props) => {
+const TradeTable = ({ items, stats, areaUnit = 'sqm' }: Props) => {
   const th = (align: 'left' | 'right' = 'left') =>
     `px-3 py-2.5 text-[11px] font-semibold text-slate-500 dark:text-slate-400 whitespace-nowrap ${
       align === 'right' ? 'text-right' : 'text-left'
@@ -34,8 +38,11 @@ const TradeTable = ({ items, stats }: Props) => {
             <tr>
               <th className={th()}>단지명</th>
               <th className={th()}>지역</th>
-              <th className={th('right')} title="전용면적(실거래 기준) · 괄호 안은 흔히 부르는 공급면적 기준 평형 추정치">
-                전용면적
+              <th
+                className={th('right')}
+                title="실거래 신고 기준 면적입니다(주거용은 전용면적, 상가는 연면적, 토지는 대지면적). 표기 단위는 필터의 '면적 표기'에서 바꿀 수 있고, 나머지 환산값은 각 셀 툴팁에 있습니다."
+              >
+                면적 <span className="font-normal text-slate-400">({AREA_UNIT_LABELS[areaUnit]})</span>
               </th>
               <th className={th('right')}>층</th>
               <th className={th('right')}>거래일</th>
@@ -47,9 +54,8 @@ const TradeTable = ({ items, stats }: Props) => {
           <tbody className="divide-y divide-slate-50 dark:divide-slate-700/60">
             {items.map((item) => {
               const isRent = item.deal_type === 'RENT'
-              const pyeong = toPyeong(item.area)
-              // "34평 아파트"처럼 사람들이 실제로 부르는 평형은 전용면적이 아니라 공급면적 기준이다.
-              const supplyPyeong = estimateSupplyPyeong(item.area, item.property_type)
+              // 표기 단위는 열 전체가 하나로 통일된다(나머지 환산값은 셀 툴팁).
+              const area = formatArea(item.area, item.property_type, areaUnit)
               // 같은 종목의 중위 평당가와 비교한다 (상가·토지는 아파트와 스케일이 다르다).
               const medianPerPyeong = baselinePerPyeong(stats, item.property_type)
               const diffPct =
@@ -62,12 +68,17 @@ const TradeTable = ({ items, stats }: Props) => {
               return (
                 <tr key={item.id} className="group hover:bg-slate-50 dark:hover:bg-slate-900/40 transition-colors">
                   <td className="px-3 py-2.5 h-11 max-w-[220px]">
-                    <Link
-                      to={`/complex/${encodeURIComponent(item.name)}`}
-                      className="font-bold text-slate-900 dark:text-white group-hover:text-primary-600 dark:group-hover:text-primary-400 truncate block"
-                    >
-                      {item.name}
-                    </Link>
+                    {/* 상가·토지는 필지 단위라 단지 상세가 없다(누르면 404). 카드와 같은 규칙. */}
+                    {hasComplexPage(item.property_type) ? (
+                      <Link
+                        to={`/complex/${encodeURIComponent(item.name)}`}
+                        className="font-bold text-slate-900 dark:text-white group-hover:text-primary-600 dark:group-hover:text-primary-400 truncate block"
+                      >
+                        {item.name}
+                      </Link>
+                    ) : (
+                      <span className="font-bold text-slate-900 dark:text-white truncate block">{item.name}</span>
+                    )}
                     <span className="text-[11px] text-slate-400 dark:text-slate-500">
                       {PROPERTY_LABELS[item.property_type] || item.property_type}
                       {isRent && (item.rent_type === 'JEONSE' ? ' · 전세' : ' · 월세')}
@@ -76,16 +87,11 @@ const TradeTable = ({ items, stats }: Props) => {
                   <td className="px-3 py-2.5 text-slate-500 dark:text-slate-400 whitespace-nowrap truncate max-w-[140px]">
                     {item.region_name} {item.umd}
                   </td>
-                  <td className="px-3 py-2.5 text-right text-slate-600 dark:text-slate-300 whitespace-nowrap tabular-nums">
-                    {item.area}㎡ ({pyeong}평)
-                    {supplyPyeong !== null && (
-                      <span
-                        className="text-slate-400 dark:text-slate-500 ml-1"
-                        title="공급면적 기준 통상 평형 추정치입니다. 실제 전용률은 단지·세대마다 달라 다를 수 있습니다."
-                      >
-                        · {supplyPyeong}평형
-                      </span>
-                    )}
+                  <td
+                    className="px-3 py-2.5 text-right text-slate-600 dark:text-slate-300 whitespace-nowrap tabular-nums"
+                    title={area.title}
+                  >
+                    {area.text}
                   </td>
                   <td className="px-3 py-2.5 text-right text-slate-600 dark:text-slate-300 whitespace-nowrap tabular-nums">
                     {item.property_type !== 'LAND' && item.floor > 0 ? `${item.floor}층` : '-'}

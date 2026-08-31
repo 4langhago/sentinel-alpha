@@ -4,23 +4,27 @@ import {
   TradeItem,
   RegionStats,
   baselinePerPyeong,
-  estimateSupplyPyeong,
+  formatArea,
   formatPrice,
-  toPyeong,
+  AreaUnit,
   PROPERTY_LABELS,
+  hasComplexPage,
+  AREA_NAME,
 } from '../types/trade'
 
 interface Props {
   item: TradeItem
   /** 같은 지역 통계. 주어지면 같은 종목 중위 평당가와 비교해 싼지/비싼지 표시한다. */
   stats?: Pick<RegionStats, 'median_per_pyeong' | 'per_property'>
+  /** 면적 표기 단위. 목록 전체가 한 단위로 통일돼야 카드끼리 비교가 된다. */
+  areaUnit?: AreaUnit
 }
 
-const TradeCard = ({ item, stats }: Props) => {
+const TradeCard = ({ item, stats, areaUnit = 'sqm' }: Props) => {
   const isRent = item.deal_type === 'RENT'
-  const pyeong = toPyeong(item.area)
-  // "34평 아파트"처럼 사람들이 실제로 부르는 평형은 전용면적이 아니라 공급면적 기준이다.
-  const supplyPyeong = estimateSupplyPyeong(item.area, item.property_type)
+  // ㎡/평/평형을 한 줄에 다 늘어놓으면 읽기 어렵다. 고른 단위 하나만 찍고
+  // 나머지 표기(전용 ㎡·평, 통상 평형)는 title 툴팁으로 남긴다.
+  const area = formatArea(item.area, item.property_type, areaUnit)
 
   // 지역 중위 평당가 대비 편차 (매매만 의미 있음).
   // 아파트를 상가·토지가 섞인 중위값과 비교하면 값이 무의미해지므로 같은 종목끼리 비교한다.
@@ -30,11 +34,23 @@ const TradeCard = ({ item, stats }: Props) => {
       ? Math.round(((item.price_per_pyeong - medianPerPyeong) / medianPerPyeong) * 100)
       : null
 
-  return (
-    <Link
-      to={`/complex/${encodeURIComponent(item.name)}`}
-      className="group block bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 p-5 hover:shadow-lg hover:border-violet-200 dark:hover:border-violet-500/40 transition-all"
-    >
+  // 상가·토지는 단지 상세가 없다(필지 단위라 이름으로 묶으면 다른 땅이 섞인다).
+  // 링크를 걸어두면 눌렀을 때 404가 나므로 카드 자체를 정적인 블록으로 그린다.
+  //
+  // 감싸는 컴포넌트를 렌더 본문 안에서 정의하면 매 렌더마다 새 함수(=새 컴포넌트
+  // 타입)가 되어 React가 이전 서브트리를 버리고 다시 마운트한다 — 카드 안의
+  // hover 상태·트랜지션이 리렌더마다 끊긴다. 그래서 컴포넌트를 만들지 않고
+  // 태그만 조건부로 고른다.
+  const linkable = hasComplexPage(item.property_type)
+  const cardClass =
+    'group block bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 p-5 transition-all' +
+    (linkable ? ' hover:shadow-lg hover:border-violet-200 dark:hover:border-violet-500/40' : '')
+
+  // 내용을 한 번만 만들고 바깥 태그(Link/div)만 조건부로 고른다. Link와 div는
+  // props 형태가 달라(to가 필수/없음) 태그 자체를 변수에 담아 공용으로 쓰면
+  // 타입이 맞지 않는다 — 내용을 감싸는 두 갈래로 나누는 편이 더 안전하다.
+  const content = (
+    <>
       <div className="flex items-start justify-between gap-3 mb-3">
         <div className="min-w-0">
           <h3 className="font-bold text-gray-900 dark:text-white truncate group-hover:text-violet-600 dark:group-hover:text-violet-400 transition-colors">
@@ -65,17 +81,9 @@ const TradeCard = ({ item, stats }: Props) => {
       </div>
 
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
-        <span className="inline-flex items-center gap-1">
+        <span className="inline-flex items-center gap-1" title={area.title}>
           <Ruler className="w-3.5 h-3.5" />
-          전용 {item.area}㎡ ({pyeong}평)
-          {supplyPyeong !== null && (
-            <span
-              className="text-gray-400 dark:text-gray-500"
-              title="공급면적 기준 통상 평형 추정치입니다. 실제 전용률은 단지·세대마다 달라 다를 수 있습니다."
-            >
-              · 통상 {supplyPyeong}평형
-            </span>
-          )}
+          {AREA_NAME[item.property_type]} {area.text}
         </span>
         {/* 토지는 층 개념이 없다 */}
         {item.property_type !== 'LAND' && item.floor > 0 && (
@@ -110,7 +118,16 @@ const TradeCard = ({ item, stats }: Props) => {
       {!isRent && (
         <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-700 flex items-center justify-between">
           <span className="text-xs text-gray-500 dark:text-gray-400">
-            {item.property_type === 'LAND' ? '평당(대지)' : '평당'}{' '}
+            {/*
+              같은 "평당"이 종목마다 다른 면적을 가리키면 안 된다.
+              토지는 대지면적, 상가는 건물 연면적 기준이다(상가를 대지 기준으로 내면
+              중위값이 58% 높아진다 — 대지면적 보유율이 23.7%뿐이라 기준은 연면적 유지).
+            */}
+            {item.property_type === 'LAND'
+              ? '평당(대지)'
+              : item.property_type === 'COMMERCIAL'
+              ? '평당(연면적)'
+              : '평당'}{' '}
             <span className="font-semibold text-gray-700 dark:text-gray-200">
               {Math.round(item.price_per_pyeong / 10000).toLocaleString()}만원
             </span>
@@ -131,7 +148,15 @@ const TradeCard = ({ item, stats }: Props) => {
           )}
         </div>
       )}
+    </>
+  )
+
+  return linkable ? (
+    <Link to={`/complex/${encodeURIComponent(item.name)}`} className={cardClass}>
+      {content}
     </Link>
+  ) : (
+    <div className={cardClass}>{content}</div>
   )
 }
 

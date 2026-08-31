@@ -8,6 +8,9 @@ import {
   ComplexDetail,
   SidoRegion,
   RegionTileStat,
+  TradeFacets,
+  PropertyType,
+  DealType,
 } from '../types/trade'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api'
@@ -31,9 +34,16 @@ const toQuery = (params: TradeSearchParams) => ({
   deal_type: params.dealType || undefined,
   min_price: params.minPrice,
   max_price: params.maxPrice,
-  min_area: params.minArea,
-  max_area: params.maxArea,
+  // 상가 연면적·토지 대지면적은 별도 컬럼이 아니라 area에 들어온다.
+  // (토지의 land_area는 전량 0, 상가는 23.7%만 값이 있어 범위 조건으로 쓸 수 없다.)
+  // 종목을 바꾸면 sanitizeForPropertyType이 반대쪽을 지우므로 둘이 동시에 차 있지 않다.
+  min_area: params.minArea ?? params.minLandArea,
+  max_area: params.maxArea ?? params.maxLandArea,
   build_year_min: params.buildYearMin,
+  // 용도(상가 건물용도 / 토지 용도지역)는 다중 선택이라 콤마로 이어 보낸다.
+  use_type: params.useTypes && params.useTypes.length > 0 ? params.useTypes.join(',') : undefined,
+  // 서버는 존재 여부로 판단하므로 켰을 때만 보낸다(0을 보내면 "제외 안 함"과 구분이 안 된다).
+  exclude_share: params.excludeShare ? 1 : undefined,
   sort: params.sort || undefined,
   page: params.page || 1,
   limit: params.limit || 20,
@@ -59,14 +69,32 @@ export const tradeApi = {
       scope: d.scope || 'unknown',
       scopeTruncated: Boolean(d.scope_truncated),
       scopeSize: d.scope_size || 0,
+      // facets는 서버 배포가 끝나기 전까지 없을 수 있다. 없으면 undefined로 두고
+      // 화면에서 용도 칩 섹션 자체를 숨긴다(빈 칩 줄이 남지 않게).
+      facets: (d.facets as TradeFacets | undefined) || undefined,
     }
   },
 
   /** 지역 시세 통계 + 월별 추이 */
-  stats: async (params: { sido?: string; sggCode?: string; q?: string } = {}): Promise<RegionStats | null> => {
+  stats: async (
+    params: {
+      sido?: string
+      sggCode?: string
+      q?: string
+      /** 요약 통계를 현재 보고 있는 종목/거래유형에 맞춘다. 'ALL'이면 서버에 보내지 않는다. */
+      propertyType?: PropertyType | 'ALL'
+      dealType?: DealType | 'ALL'
+    } = {}
+  ): Promise<RegionStats | null> => {
     try {
       const res = await axios.get(`${API_BASE_URL}/stats`, {
-        params: { sido: params.sido || undefined, sgg_code: params.sggCode || undefined, q: params.q || undefined },
+        params: {
+          sido: params.sido || undefined,
+          sgg_code: params.sggCode || undefined,
+          q: params.q || undefined,
+          property_type: params.propertyType && params.propertyType !== 'ALL' ? params.propertyType : undefined,
+          deal_type: params.dealType && params.dealType !== 'ALL' ? params.dealType : undefined,
+        },
         timeout: 10_000,
       })
       return res.data as RegionStats
