@@ -6,7 +6,8 @@ import AuctionCard from '../components/AuctionCard'
 import { auctionApi } from '../services/auctionApi'
 import { tradeApi } from '../services/tradeApi'
 import { AuctionSearchParams, AuctionSearchResult, AuctionStats } from '../types/auction'
-import { formatPrice, baselinePerPyeong } from '../types/trade'
+import { formatPrice } from '../types/trade'
+import type { RegionStats } from '../types/trade'
 
 /**
  * 경공매(온비드 공매) 물건 화면.
@@ -91,7 +92,7 @@ const AuctionPage = () => {
    * 이 교차 비교가 다른 경공매 서비스에 없는 우리 강점이다.
    * 시군구를 골랐을 때만 의미가 있어(전국 평균은 비교 기준이 못 된다) 그때만 부른다.
    */
-  const [medianPerPyeong, setMedianPerPyeong] = useState<number>(0)
+  const [marketStats, setMarketStats] = useState<RegionStats | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -120,14 +121,14 @@ const AuctionPage = () => {
 
   useEffect(() => {
     if (!soleSgg) {
-      setMedianPerPyeong(0)
+      setMarketStats(null)
       return
     }
     let cancelled = false
     tradeApi
       .stats({ sggCode: soleSgg })
-      .then((s) => !cancelled && setMedianPerPyeong(baselinePerPyeong(s ?? undefined, 'APARTMENT')))
-      .catch(() => !cancelled && setMedianPerPyeong(0))
+      .then((s) => !cancelled && setMarketStats(s ?? null))
+      .catch(() => !cancelled && setMarketStats(null))
     return () => {
       cancelled = true
     }
@@ -264,7 +265,7 @@ const AuctionPage = () => {
       ) : (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {items.map((item) => (
-            <AuctionCard key={item.id} item={item} medianPerPyeong={medianPerPyeong} />
+            <AuctionCard key={item.id} item={item} marketStats={marketStats ?? undefined} />
           ))}
         </div>
       )}

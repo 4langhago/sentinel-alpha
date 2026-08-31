@@ -17,7 +17,8 @@
     "collect": "node scripts/collect-local.mjs",
     "collect:auction": "node scripts/collect-auctions-local.mjs",
     "onbid:dump": "node scripts/dump-onbid-sample.mjs",
-    "onbid:probe": "node scripts/probe-onbid.mjs"
+    "onbid:probe": "node scripts/probe-onbid.mjs",
+    "auction:upload": "node scripts/upload-auctions-to-blobs.mjs"
   },
   "dependencies": {
     "@netlify/blobs": "^8.2.0",
