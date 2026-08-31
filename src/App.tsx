@@ -10,6 +10,7 @@ import './App.css'
 
 const HomePage       = lazy(() => import('./pages/HomePage'))
 const SearchPage     = lazy(() => import('./pages/SearchPage'))
+const AuctionPage    = lazy(() => import('./pages/AuctionPage'))
 const FavoritesPage  = lazy(() => import('./pages/FavoritesPage'))
 const CalculatorPage = lazy(() => import('./pages/CalculatorPage'))
 const ComplexPage    = lazy(() => import('./pages/ComplexPage'))
@@ -69,6 +70,8 @@ function App() {
                   <Routes>
                     <Route path="/"            element={<HomePage />} />
                     <Route path="/search"      element={<SearchPage />} />
+                    {/* 경공매는 데이터 성격(미래 일정·상태 변동)이 실거래와 달라 별도 섹션으로 둔다 */}
+                    <Route path="/auction"     element={<AuctionPage />} />
                     <Route path="/favorites"   element={<FavoritesPage />} />
                     <Route path="/calculator"  element={<CalculatorPage />} />
                     <Route path="/complex/:name" element={<ComplexPage />} />

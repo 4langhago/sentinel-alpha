@@ -1,6 +1,6 @@
 import React from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { Search, Heart, Calculator, Home, Menu, X, UserPlus, LogIn, LogOut, Crown, User } from 'lucide-react'
+import { Search, Heart, Calculator, Home, Menu, X, UserPlus, LogIn, LogOut, Crown, User, Gavel } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import ThemeToggle from './ThemeToggle'
 
@@ -20,6 +20,7 @@ const Navigation = () => {
   const navItems = [
     { path: '/', label: '홈', icon: Home },
     { path: '/search', label: '검색', icon: Search },
+    { path: '/auction', label: '경공매', icon: Gavel },
     { path: '/favorites', label: '관심단지', icon: Heart },
     { path: '/calculator', label: '수익계산', icon: Calculator }
   ]
@@ -41,7 +42,7 @@ const Navigation = () => {
           </Link>
 
           {/* Desktop Navigation */}
-          <div className="hidden md:flex items-center space-x-1">
+          <div className="hidden lg:flex items-center space-x-1">
             {navItems.map((item) => {
               const Icon = item.icon
               return (
@@ -62,7 +63,7 @@ const Navigation = () => {
           </div>
 
           {/* Right side */}
-          <div className="hidden md:flex items-center space-x-2">
+          <div className="hidden lg:flex items-center space-x-2">
             <ThemeToggle />
 
             {isLoggedIn && user ? (
@@ -119,7 +120,7 @@ const Navigation = () => {
           </div>
 
           {/* Mobile menu button */}
-          <div className="md:hidden flex items-center space-x-2">
+          <div className="lg:hidden flex items-center space-x-2">
             <ThemeToggle />
             <button
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
@@ -132,7 +133,7 @@ const Navigation = () => {
 
         {/* Mobile Navigation */}
         {isMobileMenuOpen && (
-          <div className="md:hidden py-3 border-t border-slate-100 dark:border-slate-800">
+          <div className="lg:hidden py-3 border-t border-slate-100 dark:border-slate-800">
             <div className="space-y-1 mb-3">
               {navItems.map((item) => {
                 const Icon = item.icon

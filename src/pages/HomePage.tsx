@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Search, TrendingUp, MapPin, ArrowRight, BarChart3, Building2, Info } from 'lucide-react'
+import { Search, TrendingUp, MapPin, ArrowRight, BarChart3, Building2, Info, Layers } from 'lucide-react'
 import { tradeApi } from '../services/tradeApi'
 import { useTrades } from '../hooks/useTrades'
-import { RegionStats, formatPrice } from '../types/trade'
+import { RegionStats, PropertyType, PROPERTY_LABELS, baselinePerPyeong, formatPrice } from '../types/trade'
 import TradeCard from '../components/TradeCard'
 import PriceTrendChart, { computeCompletedChange } from '../components/PriceTrendChart'
 import DataSourceBadge from '../components/DataSourceBadge'
@@ -12,13 +12,19 @@ const HomePage = () => {
   const navigate = useNavigate()
   const [keyword, setKeyword] = useState('')
   const [sido, setSido] = useState('서울')
+  // 이 서비스의 데이터에는 아파트뿐 아니라 오피스텔·상가·토지가 모두 들어 있다.
+  // 홈에서 종목을 고를 수 없으면 상가·토지로 들어갈 동선 자체가 없어진다.
+  const [propertyType, setPropertyType] = useState<PropertyType | 'ALL'>('ALL')
   // 수집된 데이터가 있는 지역만 노출한다. 하드코딩하면 데이터 없는 지역이
   // 눌리고 0건이 나와 고장난 것처럼 보인다.
   const [availableSido, setAvailableSido] = useState<string[]>(['서울'])
   const [stats, setStats] = useState<RegionStats | null>(null)
   const [statsLoading, setStatsLoading] = useState(true)
 
-  const params = useMemo(() => ({ sido, sort: 'recent' as const, limit: 6 }), [sido])
+  const params = useMemo(
+    () => ({ sido, propertyType, sort: 'recent' as const, limit: 6 }),
+    [sido, propertyType]
+  )
   const { items, total, isLive, lastUpdate, fetchedAt, loading, error, refresh } = useTrades(params)
 
   // 히어로에 올릴 "신뢰되는 숫자" 하나: 완결된 월 기준 증감률.
@@ -27,6 +33,13 @@ const HomePage = () => {
     () => (stats ? computeCompletedChange(stats.trend) : { changePct: null }),
     [stats]
   )
+
+  // 히어로 평당가는 종목별 중위값이 있을 때만 그 종목 이름을 붙인다.
+  // 없으면 상가·토지까지 섞인 값이므로 "아파트"라고 쓰면 그냥 틀린 말이 된다.
+  const heroProperty = propertyType !== 'ALL' ? propertyType : 'APARTMENT'
+  const heroOwn = stats?.per_property?.[heroProperty]
+  const heroPerPyeong = heroOwn ? baselinePerPyeong(stats ?? undefined, heroProperty) : stats?.median_per_pyeong || 0
+  const heroLabel = heroOwn ? `${sido} ${PROPERTY_LABELS[heroProperty]} 중위 평당가` : `${sido} 전체 종목 중위 평당가`
 
   useEffect(() => {
     let alive = true
@@ -45,7 +58,8 @@ const HomePage = () => {
   useEffect(() => {
     let alive = true
     setStatsLoading(true)
-    tradeApi.stats({ sido }).then((s) => {
+    // 요약 통계도 지금 고른 종목 기준으로 받아야 히어로 숫자와 라벨이 어긋나지 않는다.
+    tradeApi.stats({ sido, propertyType }).then((s) => {
       if (alive) {
         setStats(s)
         setStatsLoading(false)
@@ -54,12 +68,21 @@ const HomePage = () => {
     return () => {
       alive = false
     }
-  }, [sido])
+  }, [sido, propertyType])
+
+  // 홈에서 고른 지역·종목을 검색 화면이 그대로 이어받게 한다(다시 고르게 하지 않는다).
+  const searchLink = `/search?sido=${encodeURIComponent(sido)}${
+    propertyType === 'ALL' ? '' : `&type=${propertyType}`
+  }`
 
   const submitSearch = (e: React.FormEvent) => {
     e.preventDefault()
     const q = keyword.trim()
-    navigate(q ? `/search?q=${encodeURIComponent(q)}` : '/search')
+    const sp = new URLSearchParams()
+    if (q) sp.set('q', q)
+    sp.set('sido', sido)
+    if (propertyType !== 'ALL') sp.set('type', propertyType)
+    navigate(`/search?${sp.toString()}`)
   }
 
   return (
@@ -83,18 +106,18 @@ const HomePage = () => {
               진짜 거래된 가격으로 시세를 봅니다
             </h1>
             <p className="text-base text-white/60 mb-6 max-w-xl mx-auto leading-relaxed">
-              국토교통부 실거래가를 기반으로 아파트·오피스텔의 실제 거래가와 평당가 추이를 분석합니다.
+              국토교통부 실거래가를 기반으로 아파트·오피스텔·상가·토지의 실제 거래가와 평당가 추이를 분석합니다.
             </p>
 
             {/* 단 하나의 신뢰되는 숫자: 선택 지역의 중위 평당가와 완결 월 기준 증감률 */}
             <div className="inline-flex flex-col items-center gap-1 mb-7 px-6 py-4 rounded-2xl bg-white/5 border border-white/10">
-              <span className="text-xs font-medium text-white/50">{sido} 아파트 중위 평당가</span>
+              <span className="text-xs font-medium text-white/50">{heroLabel}</span>
               {statsLoading || !stats || stats.count === 0 ? (
                 <span className="text-2xl font-black text-white/40">—</span>
               ) : (
                 <>
                   <span className="text-3xl md:text-4xl font-black text-white tabular-nums">
-                    {Math.round(stats.median_per_pyeong / 10000).toLocaleString()}
+                    {Math.round(heroPerPyeong / 10000).toLocaleString()}
                     <span className="text-lg font-semibold text-white/60 ml-1">만원</span>
                   </span>
                   {heroChange.changePct !== null ? (
@@ -176,13 +199,35 @@ const HomePage = () => {
               </button>
             ))}
           </div>
+
+          {/* 종목 — 아파트만 보는 화면이 아니라는 사실을 홈에서부터 드러내고,
+              상가·토지로 들어가는 동선을 만든다. */}
+          <div className="flex flex-wrap items-center gap-2 mt-3">
+            <span className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-700 dark:text-slate-200 mr-2">
+              <Layers className="w-4 h-4" /> 종목
+            </span>
+            {(['ALL', 'APARTMENT', 'OFFICETEL', 'COMMERCIAL', 'LAND'] as const).map((t) => (
+              <button
+                key={t}
+                onClick={() => setPropertyType(t)}
+                aria-pressed={propertyType === t}
+                className={`px-4 py-2 rounded-full text-sm font-semibold transition-colors ${
+                  propertyType === t
+                    ? 'bg-primary-600 text-white'
+                    : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:border-primary-300'
+                }`}
+              >
+                {t === 'ALL' ? '전체' : PROPERTY_LABELS[t]}
+              </button>
+            ))}
+          </div>
         </section>
 
         {/* ── 시세 요약 ─────────────────────── */}
         <section>
           <h2 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-white mb-1 flex items-center gap-2">
             <BarChart3 className="w-7 h-7 text-primary-600" />
-            {sido} 아파트 시세 요약
+            {sido} {propertyType === 'ALL' ? '전체 종목' : PROPERTY_LABELS[propertyType]} 시세 요약
           </h2>
           <p
             className="text-slate-500 dark:text-slate-400 text-sm mb-6 inline-flex items-center gap-1"
@@ -200,7 +245,8 @@ const HomePage = () => {
             </div>
           ) : !stats || stats.count === 0 ? (
             <p className="text-slate-500 dark:text-slate-400">
-              {sido} 지역의 매매 거래 데이터가 아직 없습니다.
+              {sido} 지역의 {propertyType === 'ALL' ? '' : `${PROPERTY_LABELS[propertyType]} `}매매 거래 데이터가 아직
+              없습니다.
             </p>
           ) : (
             <>
@@ -209,8 +255,13 @@ const HomePage = () => {
                   { label: '매매 거래 건수', value: `${stats.count.toLocaleString()}건` },
                   { label: '중위 거래가', value: formatPrice(stats.median_price) },
                   {
-                    label: '중위 평당가',
-                    value: `${Math.round(stats.median_per_pyeong / 10000).toLocaleString()}만원`,
+                    // 이 카드만 종목을 좁혀 계산한다. 건수·거래가는 전 종목 합계지만
+                    // 평당가는 아파트(3,900만원대)와 토지(27만원대)를 섞으면 의미가 사라져
+                    // 대표 종목 기준으로 낸다 — 어떤 종목의 값인지 라벨에 반드시 밝힌다.
+                    label: heroOwn
+                      ? `${PROPERTY_LABELS[heroProperty]} 중위 평당가`
+                      : '중위 평당가 (전체 종목)',
+                    value: `${Math.round(heroPerPyeong / 10000).toLocaleString()}만원`,
                   },
                   { label: '최고 거래가', value: formatPrice(stats.max_price) },
                 ].map((s) => (
@@ -237,14 +288,14 @@ const HomePage = () => {
             <div>
               <h2 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
                 <TrendingUp className="w-7 h-7 text-primary-600" />
-                {sido} 최근 실거래
+                {sido} {propertyType === 'ALL' ? '' : `${PROPERTY_LABELS[propertyType]} `}최근 실거래
               </h2>
               <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">
                 가장 최근 신고된 거래부터 (매매·전월세 전체)
               </p>
             </div>
             <Link
-              to={`/search?sido=${encodeURIComponent(sido)}`}
+              to={searchLink}
               className="hidden sm:inline-flex items-center gap-1 text-sm font-semibold text-primary-600 dark:text-primary-400 hover:underline"
             >
               전체 보기 <ArrowRight className="w-4 h-4" />
@@ -260,7 +311,9 @@ const HomePage = () => {
           ) : items.length === 0 ? (
             <div className="text-center py-16 bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700">
               <Building2 className="w-10 h-10 text-slate-300 mx-auto mb-3" />
-              <p className="text-slate-500 dark:text-slate-400">{sido} 지역 거래 내역이 없습니다.</p>
+              <p className="text-slate-500 dark:text-slate-400">
+                {sido} 지역 {propertyType === 'ALL' ? '' : `${PROPERTY_LABELS[propertyType]} `}거래 내역이 없습니다.
+              </p>
             </div>
           ) : (
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -272,7 +325,7 @@ const HomePage = () => {
 
           <div className="mt-8 text-center">
             <Link
-              to={`/search?sido=${encodeURIComponent(sido)}`}
+              to={searchLink}
               className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-primary-600 to-indigo-600 text-white font-semibold hover:shadow-lg transition-all"
             >
               조건 걸고 더 찾아보기 <ArrowRight className="w-4 h-4" />

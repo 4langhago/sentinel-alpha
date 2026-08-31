@@ -8,6 +8,18 @@ export const PROPERTY_LABELS: Record<PropertyType, string> = {
   COMMERCIAL: '상가·사무실',
   LAND: '토지',
 }
+/**
+ * "단지"가 실재해 단지 상세로 묶어도 되는 종목.
+ *
+ * 상가·토지는 단지가 아니라 필지 단위라 name이 국토부가 끝자리를 가린
+ * 지번("청운동 9*")이다. 이걸 키로 이력을 묶으면 서로 다른 땅의 거래가 한
+ * 화면에 섞인다 — 마스킹된 이름 5,091개 중 1,001개가 서로 다른 시군구로
+ * 동시에 매핑됐다(예: "신당동 3**" → 서울 중구 + 충남 아산).
+ * 서버도 같은 이유로 이 종목들에는 단지 상세를 주지 않는다.
+ */
+export const COMPLEX_TYPES: PropertyType[] = ['APARTMENT', 'OFFICETEL']
+export const hasComplexPage = (pt: PropertyType): boolean => COMPLEX_TYPES.includes(pt)
+
 export type DealType = 'TRADE' | 'RENT'
 export type RentType = 'JEONSE' | 'MONTHLY' | null
 
@@ -66,6 +78,8 @@ export interface TradeSearchResult {
   scopeTruncated: boolean
   /** 검색 대상이 된 건수 */
   scopeSize: number
+  /** 현재 조건 하 종목별·용도별 건수. 서버가 아직 안 주면 undefined. */
+  facets?: TradeFacets
 }
 
 export interface TrendPoint {
@@ -76,6 +90,16 @@ export interface TrendPoint {
 
 export interface RegionStats {
   count: number
+  /**
+   * 이 통계가 전체가 아니라 "최신 N건" 표본에서 나온 것인지.
+   * 검색어를 붙이면 사전 계산치 대신 잘린 샤드에서 다시 계산하므로
+   * 서울 18,572건이 441건으로 줄어든다 — 사용자가 급감을 시세 변화로
+   * 오해하지 않게 화면이 반드시 밝혀야 한다.
+   */
+  scope_truncated?: boolean
+  scope_size?: number
+  /** 전국 통계처럼 지역별 중위값을 가중평균한 근사치인지 */
+  approximate?: boolean
   median_price: number
   avg_price: number
   min_price: number
@@ -150,9 +174,34 @@ export interface TradeSearchParams {
   minArea?: number
   maxArea?: number
   buildYearMin?: number
+  /**
+   * 건물용도(상가) 또는 지목(토지) 다중 선택. 서버에는 콤마로 이어 보낸다.
+   * 아파트·오피스텔에는 use_type이 없어 이 조건이 의미가 없다.
+   */
+  useTypes?: string[]
+  /** 상가 연면적 / 토지 대지면적 범위 (㎡). 전용면적(area)과는 다른 컬럼이다. */
+  minLandArea?: number
+  maxLandArea?: number
+  /** 지분거래 제외. 지분거래는 면적당 단가가 왜곡돼 시세 비교를 망친다. */
+  excludeShare?: boolean
   sort?: 'recent' | 'price_desc' | 'price_asc' | 'area_desc' | 'pyeong_desc' | 'pyeong_asc'
   page?: number
   limit?: number
+}
+
+/**
+ * 현재 조건 하에서 각 값이 몇 건인지 알려주는 서버 집계.
+ * 용도 칩은 종목마다 값 목록이 완전히 달라서(상가는 근린생활시설…, 토지는 전·답·대…)
+ * 프론트에 하드코딩할 수 없다. 그래서 서버가 준 상위 목록을 그대로 칩으로 만든다.
+ */
+export interface TradeFacets {
+  property?: Partial<Record<PropertyType, number>>
+  use_types?: { value: string; count: number }[]
+  /**
+   * 이 집계가 잘린 범위(전국·시도 최신 N건)에서 나왔는지.
+   * true면 종목별 건수가 실제보다 훨씬 작으므로 확정치처럼 보여주면 안 된다.
+   */
+  approximate?: boolean
 }
 
 export const SORT_LABELS: Record<NonNullable<TradeSearchParams['sort']>, string> = {
@@ -189,6 +238,65 @@ export const estimateSupplyPyeong = (area: number, propertyType: PropertyType): 
   const ratio = SUPPLY_RATIO[propertyType]
   if (!ratio || area <= 0) return null
   return Math.round(area / 3.305785 / ratio)
+}
+
+/**
+ * 면적 표기 단위. 실거래 원본은 ㎡뿐이지만 한국 사용자는 평으로 감을 잡고,
+ * 매물 광고는 공급면적 기준 "평형"으로 부른다. 세 표기를 한 줄에 다 늘어놓으면
+ * 오히려 읽기 어려워, 하나를 골라 통일하고 나머지는 툴팁으로 남긴다.
+ */
+export type AreaUnit = 'sqm' | 'pyeong' | 'supply'
+
+/**
+ * 종목별 면적의 이름. 실거래 원본은 모두 area 한 컬럼이지만 의미가 다르다 —
+ * 주거용은 전용면적, 상가는 건물 연면적, 토지는 대지(거래)면적이다.
+ * 전부 "전용면적"이라 쓰면 토지·상가에서 틀린 설명이 된다.
+ */
+export const AREA_NAME: Record<PropertyType, string> = {
+  APARTMENT: '전용',
+  OFFICETEL: '전용',
+  COMMERCIAL: '연면적',
+  LAND: '대지',
+}
+
+export const AREA_UNIT_LABELS: Record<AreaUnit, string> = {
+  sqm: '㎡',
+  pyeong: '평(전용)',
+  supply: '평형(공급추정)',
+}
+
+/**
+ * 선택한 단위 하나로 면적을 표기한다.
+ * 공급평형은 아파트·오피스텔에만 추정값이 있으므로(estimateSupplyPyeong가 null),
+ * 상가·토지에서 'supply'를 골라도 전용 평으로 폴백해 빈칸이 생기지 않게 한다.
+ *
+ * @returns text = 화면에 찍을 문자열, title = 나머지 표기를 모아둔 툴팁
+ */
+export const formatArea = (
+  area: number,
+  propertyType: PropertyType,
+  unit: AreaUnit
+): { text: string; title: string } => {
+  const pyeong = toPyeong(area)
+  const supply = estimateSupplyPyeong(area, propertyType)
+  const name = AREA_NAME[propertyType]
+  const parts = [`${name} ${area}㎡`, `${name} ${pyeong}평`]
+  if (supply !== null) parts.push(`통상 ${supply}평형(공급면적 기준 추정)`)
+  const title = parts.join(' · ')
+
+  if (unit === 'sqm') return { text: `${area}㎡`, title }
+  if (unit === 'supply' && supply !== null) return { text: `${supply}평형`, title }
+  return { text: `${pyeong}평`, title }
+}
+
+/**
+ * 공급면적 기준 평형("34평형") → 전용면적(㎡). estimateSupplyPyeong의 역함수다.
+ * 필터 구간 경계를 만들 때 쓰며, 표시와 같은 전용률을 써야 카드에 "30평형"이라
+ * 찍힌 매물이 "30평대" 필터에 걸린다.
+ */
+export const supplyPyeongToArea = (supplyPyeong: number, propertyType: PropertyType): number => {
+  const ratio = SUPPLY_RATIO[propertyType] ?? 0.75
+  return Math.round(supplyPyeong * 3.305785 * ratio)
 }
 
 /** 원 단위 금액을 "12억 3,400만원" 형태로 */

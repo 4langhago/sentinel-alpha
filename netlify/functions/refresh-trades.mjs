@@ -4,6 +4,7 @@
 import { getStore } from '@netlify/blobs'
 import { collectTrades } from './lib/collect.mjs'
 import { mergeWithStored, writeShardsToStore } from './lib/storage.mjs'
+import { ALL_SGG } from './lib/regionCodes.mjs'
 
 export default async () => {
   const serviceKey = process.env.MOLIT_API_KEY || ''
@@ -31,7 +32,7 @@ export default async () => {
 
   // 하루 호출 예산은 전국 계획보다 작아 한 번에 전국을 다 돌지 못한다.
   // 이번 수집분만으로 샤드를 다시 만들면 밀려난 시군구가 사라지므로 반드시 병합한다.
-  const finalPayload = await mergeWithStored(payload, (m) => console.log('[refresh-trades]', m))
+  const finalPayload = await mergeWithStored(payload, (m) => console.log('[refresh-trades]', m), ALL_SGG)
   if (!finalPayload) {
     // 기존 데이터를 온전히 읽지 못했다 — 저장을 건너뛴다. 이번 수집분은 버려지지만
     // 그보다 훨씬 큰 기존 데이터를 지우는 사고를 피한다. 다음 스케줄 실행에서 재시도된다.

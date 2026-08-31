@@ -3,7 +3,10 @@
 //
 //   npm run collect -- --sido 서울 --months 1 --max 20   (빠른 검증)
 //   npm run collect                                       (전체 수집)
-//   npm run collect -- --rebuild                          (API 호출 없이 샤드만 재생성)
+//   npm run collect -- --rebuild                          (API 호출 없이 샤드 전수 조사·재생성)
+//
+// 저장은 항상 기존 데이터와 병합한다. 전체 교체는 --replace, 건수가 줄어드는
+// 저장은 --force 로만 가능하다(데이터 유실 방지).
 //
 // 키는 .env.local 또는 .env 의 MOLIT_API_KEY 에서 읽는다.
 // 결과는 netlify/functions/data/ 아래에 조회용 샤드로 저장되고,
@@ -12,7 +15,14 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { collectTrades } from '../netlify/functions/lib/collect.mjs'
-import { buildShards, readAllItems, mergeItems, readShard } from '../netlify/functions/lib/storage.mjs'
+import {
+  buildShards,
+  readAllItems,
+  mergeItems,
+  readShard,
+  reconcileFromShards,
+} from '../netlify/functions/lib/storage.mjs'
+import { ALL_SGG } from '../netlify/functions/lib/regionCodes.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ROOT = resolve(__dirname, '..')
@@ -44,9 +54,34 @@ const fail = (...lines) => {
   process.exitCode = 1
 }
 
-/** 조회용 샤드로 쪼개 저장한다. 한 파일에 몰아두면 요청마다 전체를 파싱하게 된다. */
-const saveShards = async (payload) => {
+/**
+ * 조회용 샤드로 쪼개 저장한다. 한 파일에 몰아두면 요청마다 전체를 파싱하게 된다.
+ *
+ * 저장 직전에 "이번 저장이 기존보다 데이터를 줄이는가"를 반드시 확인한다.
+ * 실제로 index.json이 기존 208,583건 중 117,189건만 담은 채 덮여 쓰여, 부산·대구·
+ * 인천·울산이 통째로 서비스에서 사라진 사고가 있었다. 샤드 파일은 남아 있었는데도
+ * readAllItems()가 index.json에 등록된 시군구만 순회하는 구조라 스스로 복구되지
+ * 않았다. 줄어드는 저장은 기본적으로 막고, 의도한 축소라면 --force로만 통과시킨다.
+ */
+const saveShards = async (payload, { force = false, isRebuildCall = false } = {}) => {
   const outDir = resolve(ROOT, 'netlify/functions/data')
+  const prev = await readShard('index.json')
+  const prevTotal = prev?.total_items || 0
+  if (prevTotal > payload.items.length && !force) {
+    const lines = [
+      '',
+      `저장을 중단했습니다: 기존 ${prevTotal.toLocaleString()}건 → 이번 ${payload.items.length.toLocaleString()}건으로 줄어듭니다.`,
+      '데이터 유실 가능성이 있어 막았습니다.',
+    ]
+    // --rebuild 스스로가 막힌 경우엔 "--rebuild를 실행하라"고 안내하면 안 된다 —
+    // 이미 그 경로에 있다. 이때는 --force만 남긴다.
+    if (!isRebuildCall) {
+      lines.push('  - 일부 지역만 다시 모은 거라면 병합이 동작하는지 확인하세요.')
+      lines.push('  - 샤드가 index보다 많이 남아 있다면: npm run collect -- --rebuild (샤드 전수 조사로 복구)')
+    }
+    lines.push('  - 의도한 축소라면: --force')
+    return fail(...lines)
+  }
   const shards = buildShards(payload)
   let bytes = 0
   for (const { key, value } of shards) {
@@ -64,25 +99,45 @@ const saveShards = async (payload) => {
 /**
  * API를 호출하지 않고 이미 저장된 거래로 샤드만 다시 만든다.
  * 통계 계산 방식이 바뀌었을 때 하루 호출 한도를 쓰지 않고 반영하기 위한 경로다.
+ *
+ * index.json이 아니라 시군구 샤드 파일을 전수 조사(reconcileFromShards)한다.
+ * index가 불완전하게 덮여 쓰인 적이 있으면 readAllItems()는 그 불완전한 목록만
+ * 복원해 유실이 영구화된다 — 실제로 그렇게 91,394건(부산·대구·인천·울산 전체와
+ * 경기 대부분)이 사라져 있었다. 파일이 남아 있는 한 여기서 되찾는다.
  */
-const rebuildOnly = async () => {
-  const existing = await readAllItems()
+const rebuildOnly = async (force) => {
+  const { items: existing, found, missing } = await reconcileFromShards(ALL_SGG)
   if (existing.length === 0) {
     return fail('저장된 거래가 없습니다. 먼저 수집을 실행하세요.')
   }
+  const idxPrev = await readShard('index.json')
+  const registered = Object.keys(idxPrev?.sgg || {}).length
+  console.log(
+    `샤드 전수 조사: 시군구 ${found.length}개 · ${existing.length.toLocaleString()}건 ` +
+      `(index에 등록돼 있던 것은 ${registered}개 · ${(idxPrev?.total_items || 0).toLocaleString()}건, ` +
+      `미보유 시군구 ${missing.length}개)`
+  )
   console.log(`저장된 ${existing.length.toLocaleString()}건으로 샤드를 다시 만듭니다 (API 호출 없음)`)
-  const idx = (await readShard('index.json')) || {}
-  return saveShards({
-    items: existing,
-    last_update: idx.last_update || new Date().toISOString(),
-    source: idx.source || 'molit',
-    months: idx.months || [],
-    stats: { ...(idx.stats || {}), rebuilt_at: new Date().toISOString() },
-  })
+  const idx = idxPrev || {}
+  return saveShards(
+    {
+      items: existing,
+      last_update: idx.last_update || new Date().toISOString(),
+      source: idx.source || 'molit',
+      months: idx.months || [],
+      stats: { ...(idx.stats || {}), rebuilt_at: new Date().toISOString() },
+    },
+    // rebuild는 "샤드 파일이 진실"이라는 별도 경로라 축소 가드와 별개로
+    // --force를 받아들인다. 안 받으면, index가 샤드보다 커진 반대 방향의
+    // 유실(예: 저장 도중 중단)에서 --rebuild --force조차 통하지 않는
+    // 사각지대가 생긴다 — 그 경우 가드 메시지가 안내하는 유일한 복구
+    // 수단이 스스로 막혀버린다.
+    { force, isRebuildCall: true }
+  )
 }
 
 const main = async () => {
-  if (args.includes('--rebuild')) return rebuildOnly()
+  if (args.includes('--rebuild')) return rebuildOnly(args.includes('--force'))
 
   const serviceKey = readEnvKey('MOLIT_API_KEY')
   if (!serviceKey) {
@@ -145,11 +200,15 @@ const main = async () => {
     return fail('', '수집된 거래가 0건입니다. 저장하지 않습니다.')
   }
 
-  // 일부 지역만 수집했다면 기존 데이터를 덮어쓰지 않도록 병합한다.
-  // (--sido 로 범위를 좁혔을 때는 기본으로 병합, --replace 로 전체 교체 가능)
+  // 기존 데이터를 덮어쓰지 않도록 항상 병합한다. (--replace 로만 전체 교체)
+  //
+  // 예전에는 --sido/--service 로 범위를 좁혔을 때만 병합했는데, 전국 수집은
+  // 호출 예산(900회) 때문에 계획(2,175회)을 한 바퀴도 못 돈다. 그래서 필터 없는
+  // 실행이 오히려 "이번에 못 돈 지역을 통째로 날리는" 경로가 됐다 — 실제 유실
+  // 사고의 원인이다. 범위와 무관하게 병합이 기본이어야 한다.
   const replace = args.includes('--replace')
   let finalPayload = payload
-  if (!replace && (sidoFilter || serviceIds)) {
+  if (!replace) {
     const existing = await readAllItems()
     if (existing.length > 0) {
       const merged = mergeItems(existing, payload.items)
@@ -161,7 +220,7 @@ const main = async () => {
     }
   }
 
-  await saveShards(finalPayload)
+  await saveShards(finalPayload, { force: args.includes('--force') })
 
   if (stats.skipped_services?.length) {
     console.log(
