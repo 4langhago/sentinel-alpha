@@ -26,6 +26,16 @@ const LIST_PATH = 'OnbidRlstListSrvc2/getRlstCltrList2'
 /** 이 서비스가 요구하는 필수 파라미터. 하나라도 빠지면 빈 응답이 온다(에러도 아니다). */
 const REQUIRED = { pvctTrgtYn: 'N' }
 
+/**
+ * Date → yyyyMMdd (KST 기준).
+ * 온비드는 한국 서비스라 날짜 경계도 KST로 봐야 한다. UTC로 계산하면
+ * 한국 시각 오전 9시 이전에 하루 전 날짜를 보내게 된다.
+ */
+export const toYmd = (d) => {
+  const kst = new Date(d.getTime() + 9 * 60 * 60 * 1000)
+  return kst.toISOString().slice(0, 10).replace(/-/g, '')
+}
+
 export { normalizeServiceKey }
 
 /**
@@ -171,6 +181,14 @@ export async function fetchAuctionPage({
   pageNo = 1,
   numOfRows = 100,
   seenAt = new Date().toISOString(),
+  /**
+   * 최종수정일 하한(yyyyMMdd). 주면 그 이후에 바뀐 물건만 받는다 — 증분 수집용.
+   *
+   * 실측(2026-09-04, 압류재산): 전체 54,849건 중 최근 1일 수정분은 137건뿐이다.
+   * 전량은 140여 회 호출·25분이 걸려 Netlify 함수 시간 제한을 넘지만, 증분이면
+   * 호출 한두 번으로 끝난다. 스케줄 갱신이 실제로 완주하려면 이 파라미터가 필수다.
+   */
+  modifiedFrom = '',
   // 500건 응답이 1.3MB라 느린 회선에서는 30초를 넘길 수 있다. 넉넉히 잡는다.
   timeoutMs = 90_000,
 }) {
@@ -184,6 +202,12 @@ export async function fetchAuctionPage({
   // 시도는 온비드 정식 명칭으로만 걸린다(약칭을 보내면 0건이 온다).
   if (sido && SIDO_TO_ONBID[sido]) params.set('lctnSdnm', SIDO_TO_ONBID[sido])
   if (useMclsCode) params.set('cltrUsgMclsCtgrId', useMclsCode)
+  if (modifiedFrom) {
+    // 상한은 넉넉히 오늘로 둔다. 하한만 걸면 서버가 열린 구간으로 해석하지 않을 수
+    // 있어(실측에서 둘을 함께 보냈다) 짝으로 보낸다.
+    params.set('mdfcnYmdStart', modifiedFrom)
+    params.set('mdfcnYmdEnd', toYmd(new Date()))
+  }
 
   const res = await fetch(`${BASE}/${LIST_PATH}?${params}`, {
     signal: AbortSignal.timeout(timeoutMs),

@@ -11,6 +11,8 @@ import {
   readAuctionIndex,
   readAuctionShard,
   computeAuctionStats,
+  withEffectiveStatus,
+  effectiveStatus,
 } from './lib/auctionStorage.mjs'
 
 const json = (body, status = 200) =>
@@ -343,6 +345,12 @@ export default async (req) => {
       approximate: truncated,
     }
 
+    // 시군구 샤드의 status는 그 샤드를 마지막으로 쓴 시점의 값이라, 그 뒤 입찰이
+    // 끝난 물건은 OPEN으로 남아 있을 수 있다. 마감은 bid_end_at으로 계산되는
+    // 값이므로 여기서 최신화한 뒤 거른다(auctionStorage.effectiveStatus 참고).
+    const nowIso = new Date().toISOString()
+    items = withEffectiveStatus(items, nowIso)
+
     if (status === 'ACTIVE') items = items.filter((it) => it.status !== 'CLOSED')
     else if (status !== 'ALL') items = items.filter((it) => it.status === status)
 
@@ -469,12 +477,24 @@ export default async (req) => {
     for (const key of ['auction/recent.json', 'auction/deadline.json']) {
       const shard = await readAuctionShard(key)
       const hit = shard?.items?.find((it) => it.id === id)
-      if (hit) return json({ item: hit, source: auctionIndex.source, is_live: true, last_update: auctionIndex.last_update })
+      if (hit)
+        return json({
+          item: { ...hit, status: effectiveStatus(hit) },
+          source: auctionIndex.source,
+          is_live: true,
+          last_update: auctionIndex.last_update,
+        })
     }
     for (const code of Object.keys(auctionIndex.sgg || {})) {
       const shard = await readAuctionShard(`auction/sgg/${code}.json`)
       const hit = shard?.items?.find((it) => it.id === id)
-      if (hit) return json({ item: hit, source: auctionIndex.source, is_live: true, last_update: auctionIndex.last_update })
+      if (hit)
+        return json({
+          item: { ...hit, status: effectiveStatus(hit) },
+          source: auctionIndex.source,
+          is_live: true,
+          last_update: auctionIndex.last_update,
+        })
     }
     return json({ detail: '물건을 찾을 수 없습니다.' }, 404)
   }

@@ -50,32 +50,23 @@ export default async (req) => {
     const onbidKey = process.env.ONBID_API_KEY || ''
     if (!onbidKey) return json({ detail: 'ONBID_API_KEY가 설정되지 않았습니다.' }, 503)
 
-    const { collectAuctions } = await import('./lib/collectAuctions.mjs')
-    const { mergeAuctionsWithStored, writeAuctionShardsToStore } = await import('./lib/auctionStorage.mjs')
+    // 스케줄 함수와 같은 코드를 쓴다. 예전엔 여기서 따로 전량 수집을 호출해,
+    // 스케줄만 증분으로 고쳤을 때 수동 트리거가 옛 동작으로 남을 뻔했다.
+    const { runAuctionRefresh } = await import('./lib/refreshAuctions.mjs')
 
-    const maxCalls = Math.min(1000, Math.max(1, Number(url.searchParams.get('max_calls') || 400)))
-    const { payload, seenIds, seenAt, errors, fatal } = await collectAuctions({
+    const result = await runAuctionRefresh({
       serviceKey: onbidKey,
-      maxCalls,
-      onProgress: (m) => console.log('[refresh-now:auctions]', m),
+      maxCalls: url.searchParams.get('max_calls')
+        ? Math.min(1000, Math.max(1, Number(url.searchParams.get('max_calls'))))
+        : undefined,
+      // 수동 트리거는 사람이 기다리는 복구 수단이라 넉넉히 준다.
+      maxSeconds: Math.min(600, Math.max(10, Number(url.searchParams.get('max_seconds') || 120))),
+      // ?full=1 이면 증분 가능해도 전량으로 훑는다. 인덱스가 어긋났을 때 쓴다.
+      forceFull: url.searchParams.get('full') === '1',
+      log: (m) => console.log('[refresh-now:auctions]', m),
     })
 
-    if (fatal) return json({ ok: false, fatal, errors: errors.slice(0, 5) }, 502)
-    if (payload.items.length === 0) {
-      return json({ ok: false, detail: '수집 0건 — 기존 데이터를 유지합니다.', errors: errors.slice(0, 5) }, 502)
-    }
-
-    const finalPayload = await mergeAuctionsWithStored(payload, seenIds, seenAt, (m) =>
-      console.log('[refresh-now:auctions]', m)
-    )
-    if (!finalPayload) {
-      return json(
-        { ok: false, reason: 'merge_check_failed', detail: '기존 공매 데이터를 온전히 읽지 못해 저장을 건너뛰었습니다.' },
-        503
-      )
-    }
-    const shards = await writeAuctionShardsToStore(getStore('auctions'), finalPayload)
-    return json({ ok: true, target: 'auctions', shards, ...payload.stats, errors: errors.slice(0, 5) })
+    return json({ target: 'auctions', ...result }, result.ok ? 200 : 502)
   }
 
   if (url.searchParams.get('reconcile') === '1') {

@@ -20,6 +20,32 @@
 import { isSafeShardKey } from './shardKey.mjs'
 
 const PREFIX = 'auction'
+
+/**
+ * 물건의 실제 상태를 계산한다.
+ *
+ * 시군구 샤드에 저장된 status는 그 샤드를 마지막으로 쓴 시점의 값이라,
+ * 그 뒤에 입찰이 끝난 물건은 여전히 OPEN으로 남아 있을 수 있다.
+ * 마감은 bid_end_at 하나로 판정되는 값이므로 저장 대신 읽을 때 계산한다 —
+ * 그래야 하루 수천 건씩 나는 마감 때문에 전국 샤드를 다시 쓰지 않아도 된다.
+ *
+ * @param {object} it
+ * @param {string} [nowIso] 기준 시각(ISO). 테스트에서 고정하기 위해 받는다.
+ */
+export function effectiveStatus(it, nowIso = new Date().toISOString()) {
+  if (!it) return 'CLOSED'
+  if (it.status === 'CLOSED') return 'CLOSED'
+  if (it.bid_end_at && it.bid_end_at <= nowIso) return 'CLOSED'
+  return it.status || 'OPEN'
+}
+
+/** 목록 응답으로 나가기 직전 상태를 최신화한다. 페이지 단위라 비용이 작다. */
+export function withEffectiveStatus(items, nowIso = new Date().toISOString()) {
+  return items.map((it) => {
+    const status = effectiveStatus(it, nowIso)
+    return status === it.status ? it : { ...it, status }
+  })
+}
 /**
  * 입찰 종료일시가 없는 물건을 마감으로 판정하기까지의 유예기간.
  * 하루 2회 수집이므로 7일이면 열 번 넘게 재확인할 기회가 있다.
@@ -80,7 +106,13 @@ export function computeAuctionStats(items) {
  * @returns {{ key: string, value: object }[]}
  */
 export function buildAuctionShards(payload) {
-  const items = [...payload.items].sort(byDefault)
+  // 샤드를 만들기 전에 상태를 최신화한다.
+  //
+  // 정렬(byDefault)이 "진행 중인 것 먼저, 마감임박순"이라 상태가 낡아 있으면
+  // 이미 끝난 물건이 앞자리를 차지한다. 그러면 recent.json(전국 목록의 원천)이
+  // 만료 물건 3,000건으로 채워져, 읽는 쪽에서 걸러낸 뒤 **전국 화면이 0건**이 된다.
+  // 실제로 그렇게 됐다. 여기서 한 번 맞춰두면 정렬·집계·샤드가 모두 일관된다.
+  const items = withEffectiveStatus(payload.items, payload.last_update).sort(byDefault)
 
   const bySgg = new Map()
   const bySido = new Map()
@@ -142,6 +174,12 @@ export function buildAuctionShards(payload) {
       last_update: payload.last_update,
       source: payload.source,
       stats: payload.stats,
+      /**
+       * 증분 수집이 "여기까지는 확실히 봤다"고 보증하는 시각.
+       * 다음 실행이 이 값에서 겹침을 두고 이어받는다. 시간 예산에 걸려 잘린
+       * 실행은 이 값을 전진시키지 않아, 못 본 구간이 조용히 건너뛰어지지 않는다.
+       */
+      incremental_watermark: payload.incremental_watermark || payload.last_update,
       total_items: items.length,
       open_items: items.filter((it) => it.status !== 'CLOSED').length,
       // 전국 집계. 지역을 안 고른 첫 화면의 요약 카드가 이 값을 쓴다 —
@@ -241,6 +279,8 @@ export function mergeAuctions(existing, incoming, seenIds, seenAt) {
   for (const it of existing) map.set(it.id, it)
 
   let closed = 0
+  // 이번 병합으로 내용이 바뀐 시군구. 증분 저장에서 이 샤드들만 다시 쓴다.
+  const touchedSggCodes = new Set()
   for (const [id, old] of map) {
     if (seenIds.has(id)) continue
     if (old.status === 'CLOSED') continue
@@ -264,6 +304,11 @@ export function mergeAuctions(existing, incoming, seenIds, seenAt) {
     // 마지막으로 본 시각(last_seen_at)은 그대로 두어 "우리가 언제까지 확인했는지"가
     // 화면에 정직하게 남게 한다.
     map.set(id, { ...old, status: 'CLOSED', closed_detected_at: seenAt })
+    // 마감은 시군구 샤드를 다시 쓸 이유가 되지 않는다. bid_end_at만 있으면
+    // 읽는 쪽에서 effectiveStatus()로 계산할 수 있는 값이기 때문이다.
+    // 여기서 touched에 넣으면 하루 수천 건씩 나는 마감이 전국 샤드를 매번
+    // 다시 쓰게 만들어, 증분 수집의 이점이 저장 단계에서 통째로 사라진다.
+    // (전역 샤드 index/recent/deadline은 어차피 매번 다시 쓰므로 즉시 정확해진다.)
     closed++
   }
 
@@ -271,9 +316,12 @@ export function mergeAuctions(existing, incoming, seenIds, seenAt) {
     const old = map.get(it.id)
     // first_seen_at은 처음 본 시각을 지켜야 하므로 기존 값을 유지한다.
     map.set(it.id, old ? { ...it, first_seen_at: old.first_seen_at || it.first_seen_at } : it)
+    if (it.sgg_code) touchedSggCodes.add(it.sgg_code)
+    // 시군구가 바뀐 경우(드물지만 원본 정정) 옛 샤드에서도 빼야 하므로 함께 표시한다.
+    if (old?.sgg_code && old.sgg_code !== it.sgg_code) touchedSggCodes.add(old.sgg_code)
   }
 
-  return { items: [...map.values()].sort(byDefault), closed }
+  return { items: [...map.values()].sort(byDefault), closed, touchedSggCodes }
 }
 
 /**
@@ -290,19 +338,25 @@ export async function mergeAuctionsWithStored(payload, seenIds, seenAt, log = ()
   }
   if (existing.length === 0) return payload
 
-  const { items, closed } = mergeAuctions(existing, payload.items, seenIds, seenAt)
+  const { items, closed, touchedSggCodes } = mergeAuctions(existing, payload.items, seenIds, seenAt)
   log(
     `기존 ${existing.length.toLocaleString()}건과 병합 → ${items.length.toLocaleString()}건 ` +
       `(신규 ${(items.length - existing.length).toLocaleString()}건, 마감 처리 ${closed}건)`
   )
-  return { ...payload, items }
+  return { ...payload, items, touchedSggCodes }
 }
 
 /**
  * 샤드를 Blobs에 저장한다. index.json은 마지막에 써서, 샤드가 다 올라가기 전의
  * index를 읽고 빈 결과를 내는 일이 없게 한다.
  */
-export async function writeAuctionShardsToStore(store, payload, { force = false } = {}) {
+export async function writeAuctionShardsToStore(
+  store,
+  payload,
+  // 실측(2026-09-04, 220KB 샤드): 동시성 8은 샤드당 286ms, 24는 177ms, 48은 147ms.
+  // 48부터는 개선폭이 줄고 한도에 걸릴 위험이 커져 24를 기본으로 둔다.
+  { force = false, touchedSggCodes = null, concurrency = 24 } = {}
+) {
   const prev = await readAuctionShard(`${PREFIX}/index.json`)
   const prevTotal = prev?.total_items || 0
   if (prevTotal > payload.items.length && !force) {
@@ -313,10 +367,29 @@ export async function writeAuctionShardsToStore(store, payload, { force = false 
   }
   const shards = buildAuctionShards(payload)
   const indexShard = shards.find((s) => s.key === `${PREFIX}/index.json`)
-  for (const s of shards) {
-    if (s === indexShard) continue
-    await store.setJSON(s.key, s.value)
+
+  /**
+   * 증분 갱신에서는 바뀐 시군구 샤드만 쓴다.
+   *
+   * 전량을 매번 쓰면 샤드 300여 개를 순차 저장하느라 수집보다 오래 걸려,
+   * 함수 실행 시간 제한을 넘기는 주범이 된다. 전역 샤드(index/recent/deadline/sido)는
+   * 어차피 전체 집계라 항상 다시 쓴다 — 개수가 적어 비용이 작다.
+   *
+   * touchedSggCodes가 null이면(전량 수집) 종전대로 전부 쓴다.
+   */
+  const isSgg = (key) => key.startsWith(`${PREFIX}/sgg/`)
+  const sggCodeOf = (key) => key.slice(`${PREFIX}/sgg/`.length, -'.json'.length)
+  const targets = shards.filter((s) => {
+    if (s === indexShard) return false
+    if (!touchedSggCodes || !isSgg(s.key)) return true
+    return touchedSggCodes.has(sggCodeOf(s.key))
+  })
+
+  // 순차 저장은 샤드 수에 비례해 느려진다. 소량 병렬로 묶어 쓴다.
+  for (let i = 0; i < targets.length; i += concurrency) {
+    await Promise.all(targets.slice(i, i + concurrency).map((s) => store.setJSON(s.key, s.value)))
   }
+  // index는 마지막에. 샤드가 다 올라가기 전의 index를 읽고 빈 결과를 내는 일이 없게 한다.
   if (indexShard) await store.setJSON(indexShard.key, indexShard.value)
-  return shards.length
+  return targets.length + (indexShard ? 1 : 0)
 }

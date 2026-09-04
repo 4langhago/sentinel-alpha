@@ -56,6 +56,8 @@ export async function collectAuctions({
   sidoFilter = null,
   maxCalls = DEFAULT_MAX_CALLS,
   maxItems = Infinity,
+  modifiedFrom = '',
+  maxSeconds = Infinity,
   onProgress = () => {},
 } = {}) {
   const startedAt = Date.now()
@@ -67,6 +69,8 @@ export async function collectAuctions({
   const errors = []
   let calls = 0
   let fatal = null
+  let timedOut = false
+  const elapsedSec = () => (Date.now() - startedAt) / 1000
 
   // 시도를 주면 (재산유형 × 시도)로 쪼갠다. 압류재산 하나가 5만 건이라 한 번에 훑으면
   // 260회 넘게 걸려 실행 시간이 길어지는데, 시도로 나누면 몇 번에 걸쳐 이어받을 수 있다.
@@ -81,6 +85,13 @@ export async function collectAuctions({
       let total = null
 
       while (calls < maxCalls && byId.size < maxItems) {
+        // 시간 예산 초과. Netlify 함수는 무한정 돌 수 없어, 남은 구간을 포기하고
+        // 지금까지 모은 것만 저장한다. 병합 저장이라 다음 실행이 이어받는다.
+        if (elapsedSec() > maxSeconds) {
+          timedOut = true
+          errors.push(`${label} p${pageNo}: 시간 예산(${maxSeconds}초) 초과로 중단`)
+          break outer
+        }
         // 한 페이지를 최대 2회까지 시도한다.
         // 전량 수집은 100회가 넘는 연속 호출이라 중간에 네트워크가 한 번 튀는 일이 흔한데,
         // 첫 실패에 바로 포기하면 그 뒤 페이지 전부(수만 건)를 조용히 잃는다.
@@ -96,6 +107,7 @@ export async function collectAuctions({
               pageNo,
               numOfRows: ROWS_PER_PAGE,
               seenAt,
+              modifiedFrom,
             })
             lastErr = null
             break
@@ -158,5 +170,7 @@ export async function collectAuctions({
     seenAt,
     errors,
     fatal,
+    /** 시간 예산에 걸려 남은 구간을 포기했는지. 워터마크 전진 여부를 가른다. */
+    timedOut,
   }
 }
