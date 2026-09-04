@@ -165,7 +165,26 @@ async function loadAuctionScope({ sggCodes, sido, deadlineOnly }, index) {
     return { items, scope: 'sido', isLive: true, source: index.source, truncated: total > items.length }
   }
   const shard = await readAuctionShard('auction/recent.json')
-  const items = shard?.items || []
+  let items = shard?.items || []
+
+  // recent.json은 "마감 임박 상위 3,000건"이라 시간이 지나면 **정확히 그 3,000건이
+  // 먼저 만료된다**. 수집이 몇 시간만 밀려도 전국 첫 화면이 통째로 0건이 되는데,
+  // 실제로 그렇게 됐다(수집 4일 지연 → 3,000건 전부 마감, 전국엔 6.9만 건이 진행 중인데도).
+  //
+  // 갱신 주기를 3시간으로 줄여 근본 원인은 완화했지만, 갱신이 멈추면 다시 같은 일이
+  // 벌어진다. 첫 화면이 비는 것은 "물건이 없다"는 거짓말이라 안전망을 둔다 —
+  // 이 풀에 진행 중인 물건이 하나도 없으면 시도 샤드를 이어 붙여 다시 만든다.
+  if (items.length > 0 && !items.some((it) => effectiveStatus(it) !== 'CLOSED')) {
+    const rebuilt = []
+    for (const sido of Object.keys(index.sido || {})) {
+      const s = await readAuctionShard(`auction/sido/${sido}.json`)
+      for (const it of s?.items || []) if (effectiveStatus(it) !== 'CLOSED') rebuilt.push(it)
+    }
+    if (rebuilt.length > 0) {
+      return { items: rebuilt, scope: 'recent-fallback', isLive: true, source: index.source, truncated: true }
+    }
+  }
+
   return {
     items,
     scope: 'recent',
@@ -451,10 +470,15 @@ export default async (req) => {
         closed_count: (auctionIndex.total_items || 0) - (auctionIndex.open_items || 0),
       }
 
+    // 재산유형·용도 집계는 인덱스에 전국 값만 있다. 지역을 골랐는데 전국 값을
+    // 그대로 붙이면 "서울 5,726건"이라고 해놓고 그 아래에 전국 70,138건 분포를
+    // 보여주는 꼴이 된다. 지역을 고른 경우엔 아예 내보내지 않는다 —
+    // 틀린 숫자보다 없는 편이 낫고, 화면도 이 값을 쓰지 않는다.
+    const scoped = Boolean(sggCode || sido)
     return json({
       ...base,
-      division_totals: auctionIndex.division_totals || {},
-      use_totals: auctionIndex.use_totals || {},
+      division_totals: scoped ? undefined : auctionIndex.division_totals || {},
+      use_totals: scoped ? undefined : auctionIndex.use_totals || {},
       source: auctionIndex.source,
       is_live: true,
       last_update: auctionIndex.last_update || null,

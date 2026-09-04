@@ -153,6 +153,18 @@ export function buildAuctionShards(payload) {
 
   out.push({ key: `${PREFIX}/recent.json`, value: { items: items.slice(0, RECENT_SHARD_LIMIT) } })
 
+  /**
+   * 시군구 코드가 없는 물건(PNU가 빈 건물 물건)을 **잘라내지 않고** 모아 둔다.
+   *
+   * 이 샤드가 없으면 readAllAuctions()가 시군구 샤드만으로 전체를 복원하다가
+   * 이 물건들을 통째로 잃는다. 실제로 운영에서 70,138건 중 9,186건(13%)이
+   * 병합 때마다 사라질 뻔했고, 축소 가드가 저장을 거부해 드러났다.
+   * recent.json으로 되찾으려던 기존 방식은 그쪽이 3,000건으로 잘려 있어
+   * 일부만 복구됐다 — 잘리지 않는 전용 샤드가 필요하다.
+   */
+  const orphans = items.filter((it) => !it.sgg_code)
+  out.push({ key: `${PREFIX}/orphan.json`, value: { items: orphans } })
+
   // 마감임박: 아직 안 끝났고 종료일시가 미래인 물건만. 사용자 체감 가치가 가장 큰 목록이다.
   const now = new Date().toISOString()
   const deadline = items
@@ -263,9 +275,27 @@ export async function readAllAuctions() {
     if (!shard?.items) throw new Error(`공매 시군구 샤드 누락: ${PREFIX}/sgg/${code}.json`)
     all.push(...shard.items)
   }
-  // 시군구 코드가 없는 물건은 시군구 샤드에 없다 — 전국 샤드에서 되찾는다.
-  const recent = await readAuctionShard(`${PREFIX}/recent.json`)
-  for (const it of recent?.items || []) if (!it.sgg_code) all.push(it)
+  // 시군구 코드가 없는 물건은 시군구 샤드에 없다. 전용 샤드에서 통째로 되찾는다.
+  // 이 샤드가 아직 없는(옛 데이터) 경우에만 recent.json으로 부분 복구한다 —
+  // recent는 3,000건으로 잘려 있어 완전하지 않으므로 폴백일 뿐이다.
+  const orphan = await readAuctionShard(`${PREFIX}/orphan.json`)
+  if (orphan?.items) {
+    all.push(...orphan.items)
+  } else {
+    const recent = await readAuctionShard(`${PREFIX}/recent.json`)
+    for (const it of recent?.items || []) if (!it.sgg_code) all.push(it)
+  }
+
+  // 복원 결과가 인덱스가 말하는 총량보다 크게 모자라면, 어딘가를 잃은 것이다.
+  // 이대로 병합하면 그 차이만큼 저장에서 사라지므로 호출자가 중단하게 한다.
+  // (축소 가드가 최후 방어선이지만, 여기서 원인을 이름 붙여 알려주는 편이 낫다.)
+  const expected = idx.total_items || 0
+  if (expected > 0 && all.length < expected * 0.98) {
+    throw new Error(
+      `공매 데이터 복원 부족: 인덱스 ${expected.toLocaleString()}건 중 ${all.length.toLocaleString()}건만 읽었습니다` +
+        `${orphan?.items ? '' : ' (orphan 샤드 없음 — 전량 수집으로 한 번 재생성해야 합니다)'}`
+    )
+  }
   return all
 }
 
