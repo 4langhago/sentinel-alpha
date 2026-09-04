@@ -180,6 +180,11 @@ export function buildAuctionShards(payload) {
        * 실행은 이 값을 전진시키지 않아, 못 본 구간이 조용히 건너뛰어지지 않는다.
        */
       incremental_watermark: payload.incremental_watermark || payload.last_update,
+      /**
+       * 재산유형별 워터마크. 한 실행이 한 종류만 처리하므로(함수 시간 제한),
+       * 종류마다 "어디까지 봤는지"를 따로 남겨야 다음 실행이 이어받을 수 있다.
+       */
+      division_watermarks: payload.division_watermarks || {},
       total_items: items.length,
       open_items: items.filter((it) => it.status !== 'CLOSED').length,
       // 전국 집계. 지역을 안 고른 첫 화면의 요약 카드가 이 값을 쓴다 —
