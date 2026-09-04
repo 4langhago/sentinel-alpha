@@ -126,3 +126,8 @@ venv/
 
 # 로컬 수집 실거래 데이터 (배포는 Netlify Blobs 사용)
 netlify/functions/data/
+
+# 감사·검증용 임시 파일 (루트에 임시로 만들고 지우는 것들)
+_*.mjs
+_*.xml
+_*.json
