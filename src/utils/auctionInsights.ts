@@ -138,10 +138,13 @@ export function buildInsights(
     })
   }
 
-  if (item.eviction_responsibility?.includes('매수자')) {
+  // 온비드 원문은 같은 뜻을 "매수자"와 "매수인" 두 표기로 섞어 쓴다.
+  // 실측(2026-09-05, 압류재산 100건): 매수인 72건 / 매수자 28건.
+  // 한쪽만 보면 대부분의 물건에서 이 경고가 뜨지 않는다.
+  if (/매수(자|인)/.test(item.eviction_responsibility || '')) {
     out.push({
       kind: 'warning',
-      label: '명도책임: 매수자',
+      label: `명도책임: ${item.eviction_responsibility}`,
       basis:
         '공매는 법원경매와 달리 인도명령 제도가 없다. 점유자와 협의가 안 되면 ' +
         '처음부터 명도소송(통상 5~6개월)을 해야 하며 그 비용과 기간은 낙찰자 부담이다.',
