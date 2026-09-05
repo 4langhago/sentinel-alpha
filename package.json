@@ -18,7 +18,8 @@
     "collect:auction": "node scripts/collect-auctions-local.mjs",
     "onbid:dump": "node scripts/dump-onbid-sample.mjs",
     "onbid:probe": "node scripts/probe-onbid.mjs",
-    "blobs:upload": "node scripts/upload-to-blobs.mjs"
+    "blobs:upload": "node scripts/upload-to-blobs.mjs",
+    "auction:repair-sido": "node scripts/repair-auction-sido.mjs"
   },
   "dependencies": {
     "@netlify/blobs": "^8.2.0",
