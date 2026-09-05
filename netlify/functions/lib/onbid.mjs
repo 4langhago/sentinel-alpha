@@ -223,5 +223,14 @@ export async function fetchAuctionPage({
     const it = normalizeItem(m[1], seenAt)
     if (it) items.push(it)
   }
+
+  // 광주·전남은 온비드에서 '전남광주통합특별시' 하나로 묶여 오므로, 한쪽을
+  // 요청했으면 여기서 갈라낸다. total은 두 지역 합계라 그대로 쓰면 과대계상된다.
+  const merged = sido && SIDO_TO_ONBID[sido] === '전남광주통합특별시'
+  if (merged) {
+    const only = items.filter((it) => it.sido === sido)
+    return { items: only, total: toInt(pick(xml, 'totalCount')), mergedSido: true }
+  }
+
   return { items, total: toInt(pick(xml, 'totalCount')) }
 }
