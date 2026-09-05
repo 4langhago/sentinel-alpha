@@ -106,10 +106,14 @@ const AuctionCard = ({ item, marketStats }: Props) => {
       <h3 className="font-bold text-gray-900 dark:text-white text-sm leading-snug line-clamp-2 mb-1">
         {item.name}
       </h3>
-      <p className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1 mb-3 truncate">
+      <p className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1 mb-3">
         <MapPin className="w-3.5 h-3.5 shrink-0" />
-        {item.region_name || item.address}
-        <span className="text-gray-400 dark:text-gray-500">· {item.use_scls || item.use_mcls}</span>
+        <span className="min-w-0 truncate">
+          {item.region_name || item.address}
+          <span className="text-gray-400 dark:text-gray-500">
+            {' '}· {item.use_scls || item.use_mcls}
+          </span>
+        </span>
       </p>
 
       {/* 최저입찰가 (가장 크게) + 감정가 + 체감률 */}

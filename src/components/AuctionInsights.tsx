@@ -71,27 +71,31 @@ const AuctionInsights = ({ item, marketStats }: Props) => {
         </ul>
       )}
 
-      <button
-        onClick={() => setOpen((v) => !v)}
-        className="inline-flex items-center gap-1 text-[11px] font-semibold text-violet-600 dark:text-violet-400 hover:underline"
-      >
-        {open ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-        투자 참고 정보 {open ? '접기' : `${rest.length}건 보기`}
-      </button>
+      {rest.length > 0 && (
+        <button
+          onClick={() => setOpen((v) => !v)}
+          className="inline-flex items-center gap-1 -mx-1 px-1 py-1.5 min-h-[32px] text-[11px] font-semibold text-violet-600 dark:text-violet-400 hover:underline"
+          aria-expanded={open}
+        >
+          {open ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+          투자 참고 정보 {open ? '접기' : `${rest.length}건 보기`}
+        </button>
+      )}
 
       {open && (
-        <>
-          <ul className="space-y-2 mt-2">
-            {rest.map((i) => (
-              <Row key={i.label} i={i} />
-            ))}
-          </ul>
-          <p className="mt-3 text-[10px] leading-relaxed text-gray-400 dark:text-gray-500">
+        <ul className="space-y-2 mt-2">
+          {rest.map((i) => (
+            <Row key={i.label} i={i} />
+          ))}
+        </ul>
+      )}
+
+      {(open || rest.length === 0) && (
+        <p className="mt-3 text-[10px] leading-relaxed text-gray-400 dark:text-gray-500">
             이 정보는 온비드 공개 데이터와 국토교통부 실거래가로 계산한 <strong>참고 자료</strong>이며,
             투자 권유나 법률·세무 자문이 아닙니다. 권리관계·명도·물건 상태는 등기부등본과
-            공매재산명세서 원문 확인을 대체하지 않습니다. 최종 판단과 책임은 이용자에게 있습니다.
-          </p>
-        </>
+          공매재산명세서 원문 확인을 대체하지 않습니다. 최종 판단과 책임은 이용자에게 있습니다.
+        </p>
       )}
     </div>
   )
