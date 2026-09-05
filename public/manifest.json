@@ -1,7 +1,7 @@
 {
-  "name": "시세 인사이트 | 국토교통부 실거래가 기반 부동산 시세 분석",
+  "name": "시세 인사이트 | 실거래가·경공매 물건 검색",
   "short_name": "시세 인사이트",
-  "description": "국토교통부 실거래가로 전국 아파트·오피스텔의 실제 거래가와 평당가 추이를 확인하세요.",
+  "description": "국토교통부 실거래가와 한국자산관리공사 온비드 공매 물건을 한곳에서. 시세 대비 얼마나 싼지까지 확인하세요.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
@@ -12,5 +12,25 @@
   "icons": [
     { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
     { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ],
+  "shortcuts": [
+    {
+      "name": "경공매 물건",
+      "short_name": "경공매",
+      "description": "온비드 공매 부동산을 감정가·체감률·마감일로 찾기",
+      "url": "/auction"
+    },
+    {
+      "name": "마감임박 공매",
+      "short_name": "마감임박",
+      "description": "7일 안에 입찰이 끝나는 공매 물건",
+      "url": "/auction?dl=7"
+    },
+    {
+      "name": "실거래가 검색",
+      "short_name": "실거래",
+      "description": "전국 아파트·오피스텔 실거래가와 평당가",
+      "url": "/search"
+    }
   ]
 }

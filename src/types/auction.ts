@@ -67,6 +67,22 @@ export interface AuctionItem {
   /** 유찰 횟수 */
   fail_count: number
   private_contract: boolean
+  /**
+   * 지분 매각 여부. 지분만 낙찰받으면 단독 처분·개발이 불가능해
+   * 공유자와 협의하거나 소송을 거쳐야 한다 — 싸 보이는 이유가 여기 있는 경우가 많다.
+   */
+  share_deal?: boolean
+  /** 입찰방식 (일반경쟁 / 제한경쟁 / 지명경쟁 / 수의계약) */
+  bid_method?: string
+  /** 입찰구분 (전자입찰 / 현장입찰) */
+  bid_div?: string
+  /**
+   * 명도책임 주체. "매수자"면 명도 부담이 낙찰자에게 있다는 뜻이다.
+   * 공매는 인도명령이 없어 협의 불발 시 명도소송(5~6개월)을 해야 한다.
+   */
+  eviction_responsibility?: string
+  /** 배분요구종기일 */
+  distribution_deadline?: string
 
   bid_start_at: string
   bid_end_at: string
@@ -98,6 +114,8 @@ export interface AuctionFacets {
   /** 용도 소분류. 중분류를 고른 뒤의 목록에서 센 값이다. */
   use_sub_types?: { value: string; count: number }[]
   divisions?: { value: string; count: number }[]
+  /** 입찰방식(일반경쟁/수의계약 등). 온비드 고유 축이다. */
+  bid_methods?: { name: string; count: number }[]
   /** 잘린 범위(전국·시도 최신 N건)에서 낸 집계인지. true면 확정치처럼 보여주면 안 된다. */
   approximate?: boolean
 }
@@ -172,11 +190,25 @@ export interface AuctionSearchParams {
   /** 대표면적 범위 (㎡) */
   minArea?: number
   maxArea?: number
-  /** 감정가 대비 체감률 상한(%). "감정가의 70% 이하" 같은 조건. */
+  /**
+   * 감정가 대비 체감률 범위(%).
+   * 지지옥션·태인이 "감정가대비"를 하한~상한 범위로 받는 것을 따랐다 —
+   * 상한만 있으면 "너무 싼 것(=문제 있는 물건)"을 걸러낼 수 없다.
+   */
+  minDiscount?: number
   maxDiscount?: number
-  /** 최소 유찰 횟수 */
+  /** 유찰 횟수 범위. 타 사이트도 0~10회 범위로 받는다. */
   minFailCount?: number
+  maxFailCount?: number
   privateContract?: boolean
+  /**
+   * 지분 매각 물건 제외.
+   * 포함/제외 중 제외만 두는 이유는, 지분을 일부러 찾는 것은 소수의 전략이고
+   * 대부분의 사용자에게는 "싸 보이는 함정"을 걷어내는 쪽이 필요하기 때문이다.
+   */
+  excludeShare?: boolean
+  /** 입찰방식 다중 선택 (일반경쟁 / 수의계약 …) */
+  bidMethods?: string[]
   /** 남은 일수 이내에 마감되는 물건만 */
   deadlineDays?: number
   status?: 'ACTIVE' | 'ALL' | AuctionStatus
@@ -205,9 +237,15 @@ export const auctionActiveConditions = (p: AuctionSearchParams): string[] => {
   if (p.minPrice || p.maxPrice) out.push('최저입찰가')
   if (p.minAppraisal || p.maxAppraisal) out.push('감정가')
   if (p.minArea || p.maxArea) out.push('면적')
-  if (p.maxDiscount) out.push(`감정가의 ${p.maxDiscount}% 이하`)
-  if (p.minFailCount) out.push(`유찰 ${p.minFailCount}회 이상`)
+  if (p.minDiscount && p.maxDiscount) out.push(`감정가의 ${p.minDiscount}~${p.maxDiscount}%`)
+  else if (p.maxDiscount) out.push(`감정가의 ${p.maxDiscount}% 이하`)
+  else if (p.minDiscount) out.push(`감정가의 ${p.minDiscount}% 이상`)
+  if (p.minFailCount && p.maxFailCount) out.push(`유찰 ${p.minFailCount}~${p.maxFailCount}회`)
+  else if (p.minFailCount) out.push(`유찰 ${p.minFailCount}회 이상`)
+  else if (p.maxFailCount !== undefined) out.push(`유찰 ${p.maxFailCount}회 이하`)
   if (p.privateContract) out.push('수의계약 가능')
+  if (p.excludeShare) out.push('지분 제외')
+  if (p.bidMethods?.length) out.push(p.bidMethods.join('·'))
   if (p.deadlineDays) out.push(`${p.deadlineDays}일 이내 마감`)
   if (p.status && p.status !== 'ACTIVE') out.push('마감 물건 포함')
   return out

@@ -138,6 +138,23 @@ const auctionMatchesQuery = (item, keywords) =>
  * 시군구 지정 → 그 시군구 전체 / 시도만 → 시도 최신 N건 / 미지정 → 전국 N건.
  * 마감임박 전용 샤드는 목록이 작고 사용자 가치가 가장 커 따로 둔다.
  */
+/**
+ * 시군구 샤드 여러 개를 병렬로 읽어 잇는다.
+ *
+ * 순차로 읽으면 지연이 샤드 수에 그대로 비례한다(경기 49개면 49배).
+ * 동시에 너무 많이 열면 오히려 느려져 8개씩 끊어 읽는다.
+ */
+async function readSggShards(codes, concurrency = 8) {
+  const items = []
+  for (let i = 0; i < codes.length; i += concurrency) {
+    const batch = await Promise.all(
+      codes.slice(i, i + concurrency).map((c) => readAuctionShard(`auction/sgg/${c}.json`))
+    )
+    for (const shard of batch) if (shard?.items) items.push(...shard.items)
+  }
+  return items
+}
+
 async function loadAuctionScope({ sggCodes, sido, deadlineOnly }, index) {
   if (!index) {
     return { items: generateAuctions(), scope: 'sample', isLive: false, source: 'mock', truncated: false }
@@ -155,14 +172,34 @@ async function loadAuctionScope({ sggCodes, sido, deadlineOnly }, index) {
   // 시군구는 다중 선택이다(경공매 이용자는 "강남·서초·송파"처럼 인접 구를 묶어 본다).
   // 시군구 샤드는 잘리지 않으므로 고른 만큼 읽어 이으면 그대로 전체가 된다.
   if (sggCodes.length > 0) {
-    const items = []
-    for (const code of sggCodes) {
-      const shard = await readAuctionShard(`auction/sgg/${code}.json`)
-      if (shard?.items) items.push(...shard.items)
+    return {
+      items: await readSggShards(sggCodes),
+      scope: 'sgg',
+      isLive: true,
+      source: index.source,
+      truncated: false,
     }
-    return { items, scope: 'sgg', isLive: true, source: index.source, truncated: false }
   }
   if (sido) {
+    // 시도 샤드는 3,000건으로 잘려 있다. 17개 시도 중 11개가 이 상한을 넘는데,
+    // 경기는 19,138건 중 16,138건(84%)이 빠진다 — 그 상태로 필터를 걸면
+    // 대부분의 물건이 아예 검색 대상에서 제외된다.
+    //
+    // 시군구 샤드는 잘리지 않으므로 그 시도의 시군구를 전부 읽어 잇는다.
+    // 병렬로 읽어 지연이 샤드 수에 비례하지 않게 한다(경기 49개가 최대).
+    const codes = Object.entries(index.sgg || {})
+      .filter(([, v]) => v.sido === sido)
+      .map(([code]) => code)
+
+    if (codes.length > 0) {
+      const items = await readSggShards(codes)
+      // 시군구 코드가 없는 물건은 시군구 샤드에 없다. 시도 샤드에서 그 몫만 보탠다.
+      const shard = await readAuctionShard(`auction/sido/${sido}.json`)
+      for (const it of shard?.items || []) if (!it.sgg_code) items.push(it)
+      return { items, scope: 'sido', isLive: true, source: index.source, truncated: false }
+    }
+
+    // 인덱스에 시군구 집계가 없는 예외적 경우에만 시도 샤드로 물러난다.
     const shard = await readAuctionShard(`auction/sido/${sido}.json`)
     const items = shard?.items || []
     const total = index.sido?.[sido]?.total ?? items.length
@@ -330,9 +367,16 @@ export default async (req) => {
     const minArea = Number(q.get('min_area') || 0)
     const maxArea = Number(q.get('max_area') || Number.MAX_SAFE_INTEGER)
     // 감정가 대비 체감률 상한(%). "감정가의 70% 이하"처럼 싸진 물건을 찾는 조건이다.
+    const minDiscount = Number(q.get('min_discount') || 0)
     const maxDiscount = Number(q.get('max_discount') || 0)
     const minFailCount = Number(q.get('min_fail') || 0)
+    // 0은 "신건만"이라는 유효한 조건이다. `|| 0` 로 받으면 0과 미지정이
+    // 구분되지 않아 신건 필터가 조용히 무시된다.
+    const maxFailRaw = q.get('max_fail')
+    const maxFailCount = maxFailRaw === null || maxFailRaw === '' ? null : Number(maxFailRaw)
     const privateOnly = q.get('private_contract') === '1'
+    const excludeShare = q.get('exclude_share') === '1'
+    const bidMethods = (q.get('bid_method') || '').split(',').map((v) => v.trim()).filter(Boolean)
     // 기본은 아직 입찰할 수 있는 물건만. 끝난 물건은 이력 조회용이라 명시해야 나온다.
     const status = q.get('status') || 'ACTIVE'
     const deadlineDays = Number(q.get('deadline_days') || 0)
@@ -365,6 +409,7 @@ export default async (req) => {
       use_types: countBy(items, 'use_mcls'),
       use_sub_types: countBy(scopedForScls, 'use_scls').slice(0, 20),
       divisions: countBy(items, 'prpt_div'),
+      bid_methods: countBy(items, 'bid_method').map((f) => ({ name: f.value, count: f.count })),
       approximate: truncated,
     }
 
@@ -395,11 +440,22 @@ export default async (req) => {
     if (minPrice > 0 || maxPrice < Number.MAX_SAFE_INTEGER) {
       items = items.filter((it) => it.min_bid_price >= minPrice && it.min_bid_price <= maxPrice)
     }
-    if (maxDiscount > 0) {
-      items = items.filter((it) => typeof it.discount_rate === 'number' && it.discount_rate <= maxDiscount)
+    if (minDiscount > 0 || maxDiscount > 0) {
+      const lo = minDiscount > 0 ? minDiscount : 0
+      const hi = maxDiscount > 0 ? maxDiscount : Number.MAX_SAFE_INTEGER
+      items = items.filter(
+        (it) => typeof it.discount_rate === 'number' && it.discount_rate >= lo && it.discount_rate <= hi
+      )
     }
     if (minFailCount > 0) items = items.filter((it) => it.fail_count >= minFailCount)
+    if (maxFailCount !== null && Number.isFinite(maxFailCount)) {
+      items = items.filter((it) => it.fail_count <= maxFailCount)
+    }
     if (privateOnly) items = items.filter((it) => it.private_contract)
+    // 지분 물건은 값이 없는(옛 수집분) 경우 제외하지 않는다 — 모르는 것을
+    // 걸러내면 멀쩡한 물건까지 사라진다. 재수집되면 자연히 정확해진다.
+    if (excludeShare) items = items.filter((it) => it.share_deal !== true)
+    if (bidMethods.length) items = items.filter((it) => bidMethods.includes(it.bid_method))
     if (deadlineDays > 0) {
       const until = new Date(Date.now() + deadlineDays * 86_400_000).toISOString()
       const now = new Date().toISOString()

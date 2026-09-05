@@ -77,8 +77,15 @@ const DEADLINE_STEPS = [
   { label: '30일 이내', value: 30 },
 ]
 
+/**
+ * 필터 칩.
+ *
+ * 모바일에서는 최소 44px 높이를 준다(터치 타겟 권장치). 데스크톱은 마우스라
+ * 그만한 여백이 필요 없고, 칩이 많은 화면이라 공간 낭비가 크므로 원래 크기를 쓴다.
+ * 이 서비스는 스마트폰 홈 화면 설치를 전제로 하므로 좁은 화면 쪽을 우선한다.
+ */
 const chip = (active: boolean) =>
-  `px-3 py-1.5 rounded-full text-xs font-semibold transition-colors border ${
+  `inline-flex items-center min-h-[44px] sm:min-h-0 px-3 py-2.5 sm:py-1.5 rounded-full text-xs font-semibold transition-colors border ${
     active
       ? 'bg-violet-600 border-violet-600 text-white'
       : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-violet-300'
@@ -109,7 +116,33 @@ const AmountInput = ({
   )
 }
 
+/** 정수 직접 입력(유찰 횟수 등). AmountInput과 달리 단위 환산이 없다. */
+const NumberInput = ({
+  value,
+  onChange,
+  placeholder,
+}: {
+  value?: number
+  onChange: (v?: number) => void
+  placeholder: string
+}) => {
+  const [text, setText] = useState(value === undefined ? '' : String(value))
+  useEffect(() => setText(value === undefined ? '' : String(value)), [value])
+  return (
+    <input
+      value={text}
+      onChange={(e) => setText(e.target.value.replace(/[^0-9]/g, ''))}
+      onBlur={() => onChange(text === '' ? undefined : Number(text))}
+      onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
+      placeholder={placeholder}
+      inputMode="numeric"
+      className="w-16 px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-xs text-gray-900 dark:text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-violet-500"
+    />
+  )
+}
+
 const AuctionFilters = ({ value, onChange, facets }: Props) => {
+  const bidMethods = facets?.bid_methods || []
   const [regions, setRegions] = useState<SidoRegion[]>([])
   const [expanded, setExpanded] = useState(false)
   const [keyword, setKeyword] = useState(value.q || '')
@@ -374,20 +407,69 @@ const AuctionFilters = ({ value, onChange, facets }: Props) => {
             </div>
           )}
 
+          {/* 유찰 횟수 — 지지옥션·태인은 0~10회를 하한~상한 범위로 받는다.
+              "N회 이상"만으로는 "적당히 유찰된 것"을 고를 수 없어 범위로 둔다. */}
           <div>
             <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5">유찰 횟수</p>
-            <div className="flex flex-wrap gap-1.5">
-              {[undefined, 1, 2, 3].map((n) => (
+            <div className="flex items-center gap-2">
+              <NumberInput
+                placeholder="최소"
+                value={value.minFailCount}
+                onChange={(n) => set({ minFailCount: n })}
+              />
+              <span className="text-xs text-gray-400">~</span>
+              <NumberInput
+                placeholder="최대"
+                value={value.maxFailCount}
+                onChange={(n) => set({ maxFailCount: n })}
+              />
+              <span className="text-xs text-gray-500 dark:text-gray-400">회</span>
+            </div>
+            <div className="flex flex-wrap gap-1.5 mt-1.5">
+              {[
+                { label: '전체', min: undefined, max: undefined },
+                { label: '신건(0회)', min: undefined, max: 0 },
+                { label: '1~2회', min: 1, max: 2 },
+                { label: '3회 이상', min: 3, max: undefined },
+              ].map((p) => (
                 <button
-                  key={String(n)}
-                  onClick={() => set({ minFailCount: n })}
-                  className={chip(value.minFailCount === n)}
+                  key={p.label}
+                  onClick={() => set({ minFailCount: p.min, maxFailCount: p.max })}
+                  className={chip(value.minFailCount === p.min && value.maxFailCount === p.max)}
                 >
-                  {n === undefined ? '전체' : `${n}회 이상`}
+                  {p.label}
                 </button>
               ))}
             </div>
           </div>
+
+          {/* 입찰방식 — 온비드 고유 축이다. 수의계약은 경쟁입찰 없이 협의로
+              계약하는 방식이라 법원경매에는 아예 없는 개념이다. */}
+          {bidMethods.length > 0 && (
+            <div>
+              <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5">입찰방식</p>
+              <div className="flex flex-wrap gap-1.5">
+                {bidMethods.map((m) => {
+                  const on = value.bidMethods?.includes(m.name)
+                  return (
+                    <button
+                      key={m.name}
+                      onClick={() =>
+                        set({
+                          bidMethods: on
+                            ? value.bidMethods?.filter((x) => x !== m.name)
+                            : [...(value.bidMethods || []), m.name],
+                        })
+                      }
+                      className={chip(Boolean(on))}
+                    >
+                      {m.name} {m.count.toLocaleString()}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
 
           <div className="flex flex-wrap gap-4">
             <label className="inline-flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
@@ -398,6 +480,17 @@ const AuctionFilters = ({ value, onChange, facets }: Props) => {
                 className="rounded border-gray-300 text-violet-600 focus:ring-violet-500"
               />
               수의계약 가능한 물건만
+            </label>
+            {/* 지분 물건은 단독으로 처분·개발할 수 없어 공유자와 협의하거나
+                소송을 거쳐야 한다. "싸 보이는 이유"가 여기인 경우가 많다. */}
+            <label className="inline-flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
+              <input
+                type="checkbox"
+                checked={Boolean(value.excludeShare)}
+                onChange={(e) => set({ excludeShare: e.target.checked || undefined })}
+                className="rounded border-gray-300 text-violet-600 focus:ring-violet-500"
+              />
+              지분 물건 제외
             </label>
             {/* 마감된 물건은 온비드 API에서 사라진 것을 우리가 스냅샷으로 붙잡아 둔 것이다.
                 기본으로 보여주면 "입찰할 수 없는 물건"이 목록을 채우므로 명시해야 나온다. */}

@@ -24,8 +24,13 @@ const toQuery = (params: AuctionSearchParams) => ({
   max_appraisal: params.maxAppraisal,
   min_area: params.minArea,
   max_area: params.maxArea,
+  min_discount: params.minDiscount,
   max_discount: params.maxDiscount,
   min_fail: params.minFailCount,
+  // 0(신건만)도 유효한 값이라 falsy 체크로 걸러내면 안 된다.
+  max_fail: params.maxFailCount === undefined ? undefined : params.maxFailCount,
+  exclude_share: params.excludeShare ? 1 : undefined,
+  bid_method: params.bidMethods?.length ? params.bidMethods.join(',') : undefined,
   // 서버는 존재 여부로 판단하므로 켰을 때만 보낸다(0은 "끔"과 구분되지 않는다).
   private_contract: params.privateContract ? 1 : undefined,
   deadline_days: params.deadlineDays,

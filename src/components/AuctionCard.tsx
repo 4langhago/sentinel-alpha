@@ -6,8 +6,9 @@ import {
   primaryArea,
   remainingDays,
 } from '../types/auction'
-import { formatPrice, toPyeong, PROPERTY_LABELS } from '../types/trade'
-import type { PropertyType, RegionStats } from '../types/trade'
+import { formatPrice, toPyeong } from '../types/trade'
+import AuctionInsights from './AuctionInsights'
+import type { RegionStats } from '../types/trade'
 
 /** 시세 비교에 필요한 부분만 받는다. */
 type MarketStats = Pick<RegionStats, 'per_property'>
@@ -15,43 +16,13 @@ type MarketStats = Pick<RegionStats, 'per_property'>
 interface Props {
   item: AuctionItem
   /**
-   * 같은 시군구의 실거래 통계. 주어지면 "시세 대비" 한 줄을 덧붙인다.
+   * 같은 시군구의 실거래 통계. AuctionInsights가 시세 대비 지표를 만드는 데 쓴다.
    *
    * 숫자 하나(중위 평당가)가 아니라 통계 객체를 통째로 받는 이유는, 비교 기준을
    * **물건 종목에 맞춰 골라야** 하기 때문이다. 오피스텔을 아파트 중위가와 비교하면
    * "시세 대비 -99%" 같은 무의미한 수치가 나온다(실제로 그랬다).
    */
   marketStats?: MarketStats
-}
-
-/** 비교 기준으로 삼기에 최소한 필요한 실거래 표본 수. */
-const MIN_SAMPLE = 5
-
-/**
- * 시세 비교를 붙일 수 있는 종목.
- *
- * 토지·상가는 실거래 표본이 얇고 개별 요인(용도지역·맹지·상권·공실 등)이 가격을
- * 좌우해서, 시군구 중위 평당가와 비교하는 것 자체가 오해를 만든다.
- * 감정평가 실무에서도 토지는 공시지가기준법을 쓰지 거래사례 비교를 우선하지 않는다.
- */
-const COMPARABLE_TYPES = new Set<PropertyType>(['APARTMENT', 'OFFICETEL'])
-
-/**
- * 종목이 정확히 일치하는 실거래 중위 평당가만 돌려준다.
- *
- * trade.ts의 baselinePerPyeong()은 종목별 값이 없으면 전체 중위값으로 폴백하는데,
- * 공매에서는 그 폴백이 곧 오류다 — 오피스텔 물건을 아파트 중위가와 비교해
- * "시세 대비 -99%"를 띄우던 원인이 이 폴백이었다. 여기서는 폴백하지 않고,
- * 같은 종목의 표본이 충분할 때만 비교한다.
- */
-const comparableType = (pt: AuctionItem['property_type']): PropertyType | null =>
-  pt && COMPARABLE_TYPES.has(pt as PropertyType) ? (pt as PropertyType) : null
-
-const matchedMedian = (stats: MarketStats | undefined, pt: PropertyType | null): number => {
-  if (!stats || !pt) return 0
-  const own = stats.per_property?.[pt]
-  if (!own || own.count < MIN_SAMPLE || !(own.median_per_pyeong > 0)) return 0
-  return own.median_per_pyeong
 }
 
 /**
@@ -85,19 +56,6 @@ const AuctionCard = ({ item, marketStats }: Props) => {
   const rate = item.discount_rate
   const deepDiscount = rate !== null && rate <= 50
 
-  // 같은 지역·같은 종목 실거래 중위 평당가와의 비교. 감정가가 아니라 시장가 대비
-  // 감각을 준다. 면적이 없거나(권리만 있는 물건) 최저가가 비공개면 계산하지 않고,
-  // 지분 물건도 제외한다 — 지분은 전체 면적 기준 평당가가 성립하지 않는다.
-  const pyeong = area ? toPyeong(area.sqm) : 0
-  const perPyeong =
-    pyeong > 0 && item.min_bid_price > 0 && !item.min_bid_undisclosed
-      ? Math.round(item.min_bid_price / pyeong)
-      : 0
-  const cmpType = comparableType(item.property_type)
-  const median = matchedMedian(marketStats, cmpType)
-  const sampleCount = cmpType ? (marketStats?.per_property?.[cmpType]?.count ?? 0) : 0
-  const vsMarket =
-    perPyeong > 0 && median > 0 ? Math.round(((perPyeong - median) / median) * 100) : null
 
   return (
     <div
@@ -201,20 +159,11 @@ const AuctionCard = ({ item, marketStats }: Props) => {
           </span>
         )}
         {item.bid_round > 0 && <span>{item.bid_round}회차</span>}
-        {vsMarket !== null && (
-          <span
-            className={vsMarket < 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-500 dark:text-gray-400'}
-            title={
-              `같은 시군구 ${cmpType ? PROPERTY_LABELS[cmpType] : ""} 실거래 ${sampleCount}건의 중위 평당가와 ` +
-              `단순 비교한 값입니다. 층·향·연식·권리관계는 반영되지 않으므로 참고용으로만 보세요.`
-            }
-          >
-            {cmpType ? PROPERTY_LABELS[cmpType] : ""} 시세 대비 {vsMarket > 0 ? '+' : ''}
-            {vsMarket}%
-            <span className="text-gray-400 dark:text-gray-500"> ({sampleCount}건)</span>
-          </span>
-        )}
+        {/* 시세 대비는 AuctionInsights가 근거와 함께 보여준다.
+            숫자만 두 곳에 흩어두면 한쪽이 갱신에서 빠질 때 서로 어긋난다. */}
       </div>
+
+      <AuctionInsights item={item} marketStats={marketStats} />
 
       {/* 입찰 기간 */}
       <div className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-gray-700/40 rounded-lg px-2.5 py-2 mb-3">

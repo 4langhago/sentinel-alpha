@@ -25,7 +25,12 @@ const AuctionPage = () => {
 
   // URL 쿼리를 필터의 단일 진실 소스로 삼아 새로고침·공유에도 조건이 유지되게 한다.
   const filters = useMemo<AuctionSearchParams>(() => {
-    const num = (k: string) => (searchParams.get(k) ? Number(searchParams.get(k)) : undefined)
+    // `searchParams.get(k) ? …` 로 쓰면 '0'이 falsy로 걸러져, "유찰 0회(신건만)"
+    // 같은 조건이 URL을 공유하는 순간 사라진다. 빈 문자열만 미지정으로 본다.
+    const num = (k: string) => {
+      const raw = searchParams.get(k)
+      return raw === null || raw === '' ? undefined : Number(raw)
+    }
     const list = (k: string) => searchParams.get(k)?.split(',').filter(Boolean) || undefined
     return {
       q: searchParams.get('q') || undefined,
@@ -40,8 +45,12 @@ const AuctionPage = () => {
       maxAppraisal: num('maxa'),
       minArea: num('minsq'),
       maxArea: num('maxsq'),
+      minDiscount: num('mindisc'),
       maxDiscount: num('disc'),
       minFailCount: num('fail'),
+      maxFailCount: num('maxfail'),
+      excludeShare: searchParams.get('noshare') === '1' || undefined,
+      bidMethods: list('bm'),
       privateContract: searchParams.get('pvct') === '1' || undefined,
       deadlineDays: num('dl'),
       status: (searchParams.get('st') as AuctionSearchParams['status']) || 'ACTIVE',
@@ -65,8 +74,12 @@ const AuctionPage = () => {
     if (next.maxAppraisal) p.set('maxa', String(next.maxAppraisal))
     if (next.minArea) p.set('minsq', String(next.minArea))
     if (next.maxArea) p.set('maxsq', String(next.maxArea))
+    if (next.minDiscount) p.set('mindisc', String(next.minDiscount))
     if (next.maxDiscount) p.set('disc', String(next.maxDiscount))
     if (next.minFailCount) p.set('fail', String(next.minFailCount))
+    if (next.maxFailCount !== undefined) p.set('maxfail', String(next.maxFailCount))
+    if (next.excludeShare) p.set('noshare', '1')
+    if (next.bidMethods?.length) p.set('bm', next.bidMethods.join(','))
     if (next.privateContract) p.set('pvct', '1')
     if (next.deadlineDays) p.set('dl', String(next.deadlineDays))
     if (next.status && next.status !== 'ACTIVE') p.set('st', next.status)
@@ -276,7 +289,7 @@ const AuctionPage = () => {
           <button
             onClick={() => goPage(page - 1)}
             disabled={page <= 1}
-            className="p-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 disabled:opacity-40"
+            className="inline-flex items-center justify-center min-h-[44px] min-w-[44px] sm:min-h-0 sm:min-w-0 p-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 disabled:opacity-40"
           >
             <ChevronLeft className="w-4 h-4" />
           </button>
@@ -286,7 +299,7 @@ const AuctionPage = () => {
           <button
             onClick={() => goPage(page + 1)}
             disabled={page >= totalPages}
-            className="p-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 disabled:opacity-40"
+            className="inline-flex items-center justify-center min-h-[44px] min-w-[44px] sm:min-h-0 sm:min-w-0 p-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 disabled:opacity-40"
           >
             <ChevronRight className="w-4 h-4" />
           </button>

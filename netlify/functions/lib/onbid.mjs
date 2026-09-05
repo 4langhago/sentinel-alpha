@@ -145,6 +145,27 @@ function normalizeItem(body, seenAt) {
     fail_count: toInt(g('usbdNft')),
     /** 수의계약 가능 여부 */
     private_contract: g('pvctTrgtYn') === 'Y',
+    /**
+     * 지분 매각 여부. 지분만 낙찰받으면 단독으로 처분·개발할 수 없고
+     * 공유자와 협의하거나 공유물분할청구소송을 거쳐야 해 장기화된다.
+     * 싸 보이는 이유가 여기 있는 경우가 많아 목록에서 걸러낼 수 있어야 한다.
+     */
+    share_deal: g('alcYn') === 'Y',
+    /** 입찰방식 (일반경쟁 / 제한경쟁 / 지명경쟁 / 수의계약) */
+    bid_method: g('cptnMthodNm'),
+    /** 입찰구분 (전자입찰 / 현장입찰) */
+    bid_div: g('bidDivNm'),
+    /**
+     * 명도책임 주체("매수자" 또는 위임기관 등).
+     *
+     * 공매는 법원경매와 달리 인도명령 제도가 없어, 점유자와 협의가 안 되면
+     * 명도소송(5~6개월)을 해야 한다. 이 필드가 "매수자"면 그 부담이 낙찰자에게
+     * 있다는 뜻이라, 초보자가 가장 크게 데는 지점을 **추정이 아니라 원본 데이터로**
+     * 경고할 수 있다.
+     */
+    eviction_responsibility: g('evcRsbyTrgtCont'),
+    /** 배분요구종기일. 권리관계 확인의 기준일 중 하나다. */
+    distribution_deadline: g('dtbtRqrEdtmCont'),
 
     bid_start_at: toIso(g('cltrBidBgngDt')),
     bid_end_at: toIso(g('cltrBidEndDt')),
