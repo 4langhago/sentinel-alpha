@@ -28,6 +28,18 @@ const MIN_SAMPLE = 5
  */
 const COMPARABLE = new Set<PropertyType>(['APARTMENT', 'OFFICETEL'])
 
+/**
+ * 라벨에 원문을 그대로 넣을 때의 길이 상한.
+ * 온비드 명도책임 필드는 자유 텍스트라 대부분 "매수인" 단문이지만
+ * 괄호 단서가 붙어 길어지는 경우가 있다. 라벨이 길어지면 카드 레이아웃이
+ * 깨지므로 자르되, 잘린 원문은 basis에 전문을 남겨 정보를 잃지 않는다.
+ */
+const LABEL_MAX = 20
+
+function clipLabel(text: string): string {
+  return text.length > LABEL_MAX ? `${text.slice(0, LABEL_MAX)}…` : text
+}
+
 export interface Insight {
   /** 지표(계산된 값) / 경고(데이터로 확인됨) / 확인필요(데이터로 알 수 없음) */
   kind: 'metric' | 'warning' | 'unknown'
@@ -141,11 +153,14 @@ export function buildInsights(
   // 온비드 원문은 같은 뜻을 "매수자"와 "매수인" 두 표기로 섞어 쓴다.
   // 실측(2026-09-05, 압류재산 100건): 매수인 72건 / 매수자 28건.
   // 한쪽만 보면 대부분의 물건에서 이 경고가 뜨지 않는다.
-  if (/매수(자|인)/.test(item.eviction_responsibility || '')) {
+  const eviction = item.eviction_responsibility || ''
+  if (/매수(자|인)/.test(eviction)) {
+    const clipped = clipLabel(eviction)
     out.push({
       kind: 'warning',
-      label: `명도책임: ${item.eviction_responsibility}`,
+      label: `명도책임: ${clipped}`,
       basis:
+        (clipped === eviction ? '' : `원문: ${eviction}. `) +
         '공매는 법원경매와 달리 인도명령 제도가 없다. 점유자와 협의가 안 되면 ' +
         '처음부터 명도소송(통상 5~6개월)을 해야 하며 그 비용과 기간은 낙찰자 부담이다.',
       emphasis: true,
