@@ -32,10 +32,15 @@ import { toYmd } from './onbid.mjs'
 export const DEFAULT_COLLECT_BUDGET_SEC = Number(process.env.AUCTION_COLLECT_BUDGET_SEC || 10)
 
 /**
- * 증분 창의 여유 일수. 실행이 한 번 걸러지거나 온비드 쪽 수정일 반영이 늦어도
- * 놓치지 않기 위한 겹침이다. 중복 수신은 같은 id로 덮어쓰므로 해가 없다.
+ * 증분 창의 여유 일수.
+ *
+ * mdfcnYmd는 **일 단위**라 겹침 1일이 곧 "어제부터"를 뜻한다. 2일로 뒀더니
+ * 창이 8,769건(18회 호출·55초)으로 넓어져 함수 한도를 넘겼다 — 1일이면 137건,
+ * 1회 호출이다. 실행이 걸러지면 워터마크가 전진하지 않아 창이 자동으로 넓어지므로,
+ * 여기서 미리 넉넉히 잡을 이유가 없다. 이건 같은 날 늦게 반영되는 수정분을
+ * 놓치지 않기 위한 최소 안전폭이다.
  */
-const OVERLAP_DAYS = 2
+const OVERLAP_DAYS = 1
 
 /**
  * 증분으로 따라잡을 수 있는 최대 공백(일). 이보다 오래 멈췄다면 증분 창이 전량과
@@ -99,12 +104,18 @@ export async function runAuctionRefresh({
       : `전량 수집 [${divLabel}] — ${forceFull ? '강제 전량' : index?.total_items ? `공백 ${gapDays.toFixed(1)}일로 증분 불가` : '저장된 데이터 없음'}`
   )
 
-  const { payload, seenIds, seenAt, errors, fatal, timedOut } = await collectAuctions({
+  // 지난 실행이 이 재산유형의 중간에서 끊겼다면 그 페이지부터 잇는다.
+  const cursors = { ...(index?.division_cursors || {}) }
+  const startPage = incremental ? cursors[division] || 1 : 1
+  if (startPage > 1) log(`  이전 실행이 p${startPage}에서 끊겨 이어받습니다.`)
+
+  const { payload, seenIds, seenAt, errors, fatal, timedOut, resumePage } = await collectAuctions({
     serviceKey,
     divisions: [division],
     modifiedFrom,
     maxCalls,
     maxSeconds,
+    startPage,
     onProgress: log,
   })
 
@@ -133,13 +144,21 @@ export async function runAuctionRefresh({
   // 워터마크는 **완주한 실행만** 전진시킨다. 시간 예산에 걸려 잘렸다면 그 구간을
   // 다 보지 못한 것이므로, 다음 실행이 같은 창을 다시 훑도록 이전 값을 유지한다.
   // 재산유형마다 따로 두어, 한 종류가 계속 잘려도 나머지는 정상 진행한다.
-  if (!timedOut) marks[division] = seenAt
+  // 완주했으면 워터마크를 전진시키고 커서를 지운다(다음엔 새 창을 처음부터).
+  // 잘렸으면 워터마크는 그대로 두고 커서만 남겨, 다음 실행이 끊긴 페이지부터 잇는다.
+  if (timedOut) {
+    cursors[division] = resumePage
+  } else {
+    marks[division] = seenAt
+    delete cursors[division]
+  }
 
   const shards = await writeAuctionShardsToStore(
     getStore('auctions'),
     {
       ...finalPayload,
       division_watermarks: marks,
+      division_cursors: cursors,
       // 전체 워터마크는 "가장 뒤처진 종류"를 따른다. 이 값이 신선도 판정의
       // 기준이므로, 한 종류만 최신이어도 전체가 최신인 척하면 안 된다.
       incremental_watermark: ROTATION.map((c) => marks[c]).every(Boolean)
@@ -147,7 +166,13 @@ export async function runAuctionRefresh({
         : seenAt,
     },
     // 증분일 때만 바뀐 시군구 샤드를 골라 쓴다. 전량이면 전부 다시 쓴다.
-    { touchedSggCodes: incremental ? finalPayload.touchedSggCodes : null }
+    incremental
+      ? {
+          touchedSggCodes: finalPayload.touchedSggCodes,
+          touchedSidos: finalPayload.touchedSidos,
+          touchedOrphan: finalPayload.touchedOrphan,
+        }
+      : {}
   )
 
   log(

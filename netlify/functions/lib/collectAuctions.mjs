@@ -58,6 +58,15 @@ export async function collectAuctions({
   maxItems = Infinity,
   modifiedFrom = '',
   maxSeconds = Infinity,
+  /**
+   * 이어받을 페이지 번호. 시간 예산에 걸려 중간에 끊겼을 때, 다음 실행이
+   * 1페이지부터 다시 하지 않고 끊긴 지점부터 잇게 한다.
+   *
+   * 이게 없으면 한 창을 한 번에 못 끝내는 재산유형은 **영원히 1페이지만**
+   * 반복해서, 뒤쪽 페이지의 물건이 갱신되지 않는다(실측: 기타일반재산 755건이
+   * 2페이지 필요한데 예산 10초로는 1페이지에서 끊겼다).
+   */
+  startPage = 1,
   onProgress = () => {},
 } = {}) {
   const startedAt = Date.now()
@@ -70,6 +79,8 @@ export async function collectAuctions({
   let calls = 0
   let fatal = null
   let timedOut = false
+  /** 시간 예산에 걸려 끊긴 지점. 다음 실행이 여기서부터 잇는다. */
+  let resumePage = 1
   const elapsedSec = () => (Date.now() - startedAt) / 1000
 
   // 시도를 주면 (재산유형 × 시도)로 쪼갠다. 압류재산 하나가 5만 건이라 한 번에 훑으면
@@ -81,7 +92,7 @@ export async function collectAuctions({
 
     for (const sido of sidos) {
       const label = sido ? `${divLabel}/${sido}` : divLabel
-      let pageNo = 1
+      let pageNo = startPage
       let total = null
 
       while (calls < maxCalls && byId.size < maxItems) {
@@ -89,7 +100,10 @@ export async function collectAuctions({
         // 지금까지 모은 것만 저장한다. 병합 저장이라 다음 실행이 이어받는다.
         if (elapsedSec() > maxSeconds) {
           timedOut = true
-          errors.push(`${label} p${pageNo}: 시간 예산(${maxSeconds}초) 초과로 중단`)
+          resumePage = pageNo
+          errors.push(
+            `${label} p${pageNo}: 시간 예산(${maxSeconds}초) 초과로 중단 — 다음 실행이 이 페이지부터 잇습니다`
+          )
           break outer
         }
         // 한 페이지를 최대 2회까지 시도한다.
@@ -172,5 +186,10 @@ export async function collectAuctions({
     fatal,
     /** 시간 예산에 걸려 남은 구간을 포기했는지. 워터마크 전진 여부를 가른다. */
     timedOut,
+    /**
+     * 다음 실행이 이어받을 페이지. 완주했으면 1이다(다음엔 새 창을 처음부터 훑는다).
+     * 이 값이 없으면 한 창을 한 번에 못 끝내는 재산유형은 1페이지만 무한 반복한다.
+     */
+    resumePage: timedOut ? resumePage : 1,
   }
 }

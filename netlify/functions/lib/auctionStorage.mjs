@@ -197,6 +197,11 @@ export function buildAuctionShards(payload) {
        * 종류마다 "어디까지 봤는지"를 따로 남겨야 다음 실행이 이어받을 수 있다.
        */
       division_watermarks: payload.division_watermarks || {},
+      /**
+       * 재산유형별 이어받기 페이지. 한 창을 한 번에 못 끝냈을 때 어디서 끊겼는지.
+       * 이게 없으면 그 재산유형은 1페이지만 무한 반복해 뒤쪽이 갱신되지 않는다.
+       */
+      division_cursors: payload.division_cursors || {},
       total_items: items.length,
       open_items: items.filter((it) => it.status !== 'CLOSED').length,
       // 전국 집계. 지역을 안 고른 첫 화면의 요약 카드가 이 값을 쓴다 —
@@ -266,7 +271,7 @@ export async function readAuctionShard(key, { requireExists = false } = {}) {
 export const readAuctionIndex = () => readAuctionShard(`${PREFIX}/index.json`)
 
 /** 저장된 전체 물건을 시군구 샤드에서 복원한다. 시군구 샤드는 잘리지 않는다. */
-export async function readAllAuctions() {
+export async function readAllAuctions({ allowIncomplete = false } = {}) {
   const idx = await readAuctionShard(`${PREFIX}/index.json`)
   if (!idx?.sgg) return []
   const all = []
@@ -290,7 +295,7 @@ export async function readAllAuctions() {
   // 이대로 병합하면 그 차이만큼 저장에서 사라지므로 호출자가 중단하게 한다.
   // (축소 가드가 최후 방어선이지만, 여기서 원인을 이름 붙여 알려주는 편이 낫다.)
   const expected = idx.total_items || 0
-  if (expected > 0 && all.length < expected * 0.98) {
+  if (!allowIncomplete && expected > 0 && all.length < expected * 0.98) {
     throw new Error(
       `공매 데이터 복원 부족: 인덱스 ${expected.toLocaleString()}건 중 ${all.length.toLocaleString()}건만 읽었습니다` +
         `${orphan?.items ? '' : ' (orphan 샤드 없음 — 전량 수집으로 한 번 재생성해야 합니다)'}`
@@ -314,8 +319,14 @@ export function mergeAuctions(existing, incoming, seenIds, seenAt) {
   for (const it of existing) map.set(it.id, it)
 
   let closed = 0
-  // 이번 병합으로 내용이 바뀐 시군구. 증분 저장에서 이 샤드들만 다시 쓴다.
+  // 이번 병합으로 내용이 바뀐 시군구/시도. 증분 저장에서 이 샤드들만 다시 쓴다.
+  // 시도 샤드는 하나가 3MB라 16개를 매번 쓰면 48MB가 되어, 수집보다 저장이
+  // 훨씬 오래 걸린다(실측: 회당 65MB를 쓰다 함수 30초 한도에 걸렸다).
   const touchedSggCodes = new Set()
+  const touchedSidos = new Set()
+  // 시군구 코드가 없는 물건이 바뀌었는지. orphan 샤드는 1만 건·11MB라
+  // 바뀌지 않았으면 다시 쓰지 않는다.
+  let touchedOrphan = false
   for (const [id, old] of map) {
     if (seenIds.has(id)) continue
     if (old.status === 'CLOSED') continue
@@ -352,33 +363,47 @@ export function mergeAuctions(existing, incoming, seenIds, seenAt) {
     // first_seen_at은 처음 본 시각을 지켜야 하므로 기존 값을 유지한다.
     map.set(it.id, old ? { ...it, first_seen_at: old.first_seen_at || it.first_seen_at } : it)
     if (it.sgg_code) touchedSggCodes.add(it.sgg_code)
-    // 시군구가 바뀐 경우(드물지만 원본 정정) 옛 샤드에서도 빼야 하므로 함께 표시한다.
+    else touchedOrphan = true
+    if (it.sido) touchedSidos.add(it.sido)
+    // 시군구·시도가 바뀐 경우(드물지만 원본 정정) 옛 샤드에서도 빼야 하므로 함께 표시한다.
     if (old?.sgg_code && old.sgg_code !== it.sgg_code) touchedSggCodes.add(old.sgg_code)
+    if (old?.sido && old.sido !== it.sido) touchedSidos.add(old.sido)
+    if (old && !old.sgg_code && it.sgg_code) touchedOrphan = true
   }
 
-  return { items: [...map.values()].sort(byDefault), closed, touchedSggCodes }
+  return { items: [...map.values()].sort(byDefault), closed, touchedSggCodes, touchedSidos, touchedOrphan }
 }
 
 /**
  * 저장 직전 병합. 기존 데이터를 온전히 읽지 못하면 null을 반환해
  * 호출자가 이번 저장을 통째로 건너뛰게 한다(부분 저장이 유실보다 위험하다).
  */
-export async function mergeAuctionsWithStored(payload, seenIds, seenAt, log = () => {}) {
+export async function mergeAuctionsWithStored(
+  payload,
+  seenIds,
+  seenAt,
+  log = () => {},
+  { allowIncomplete = false } = {}
+) {
   let existing
   try {
-    existing = await readAllAuctions()
+    // allowIncomplete는 **전량 수집으로 부트스트랩할 때만** 쓴다.
+    // orphan 샤드가 없던 시절의 데이터에서는 복원이 항상 부족하게 나와,
+    // 그 샤드를 만들려면 저장이 필요한데 저장은 복원 검사에 막히는 순환이 생긴다.
+    // 이번 payload가 전량이라면 기존을 완전히 못 읽어도 손실이 없다.
+    existing = await readAllAuctions({ allowIncomplete })
   } catch (e) {
     log(`기존 공매 데이터를 온전히 읽지 못해 이번 저장을 건너뜁니다(기존 보존): ${e.message}`)
     return null
   }
   if (existing.length === 0) return payload
 
-  const { items, closed, touchedSggCodes } = mergeAuctions(existing, payload.items, seenIds, seenAt)
+  const { items, closed, touchedSggCodes, touchedSidos, touchedOrphan } = mergeAuctions(existing, payload.items, seenIds, seenAt)
   log(
     `기존 ${existing.length.toLocaleString()}건과 병합 → ${items.length.toLocaleString()}건 ` +
       `(신규 ${(items.length - existing.length).toLocaleString()}건, 마감 처리 ${closed}건)`
   )
-  return { ...payload, items, touchedSggCodes }
+  return { ...payload, items, touchedSggCodes, touchedSidos, touchedOrphan }
 }
 
 /**
@@ -390,7 +415,7 @@ export async function writeAuctionShardsToStore(
   payload,
   // 실측(2026-09-04, 220KB 샤드): 동시성 8은 샤드당 286ms, 24는 177ms, 48은 147ms.
   // 48부터는 개선폭이 줄고 한도에 걸릴 위험이 커져 24를 기본으로 둔다.
-  { force = false, touchedSggCodes = null, concurrency = 24 } = {}
+  { force = false, touchedSggCodes = null, touchedSidos = null, touchedOrphan = null, concurrency = 24 } = {}
 ) {
   const prev = await readAuctionShard(`${PREFIX}/index.json`)
   const prevTotal = prev?.total_items || 0
@@ -412,12 +437,17 @@ export async function writeAuctionShardsToStore(
    *
    * touchedSggCodes가 null이면(전량 수집) 종전대로 전부 쓴다.
    */
-  const isSgg = (key) => key.startsWith(`${PREFIX}/sgg/`)
-  const sggCodeOf = (key) => key.slice(`${PREFIX}/sgg/`.length, -'.json'.length)
+  const nameIn = (key, dir) => key.slice(`${PREFIX}/${dir}/`.length, -'.json'.length)
   const targets = shards.filter((s) => {
     if (s === indexShard) return false
-    if (!touchedSggCodes || !isSgg(s.key)) return true
-    return touchedSggCodes.has(sggCodeOf(s.key))
+    if (!touchedSggCodes) return true // 전량 수집 — 전부 다시 쓴다
+    if (s.key.startsWith(`${PREFIX}/sgg/`)) return touchedSggCodes.has(nameIn(s.key, 'sgg'))
+    // 시도 샤드는 3MB씩이라 16개를 매번 쓰면 48MB가 된다. 바뀐 시도만 쓴다.
+    if (s.key.startsWith(`${PREFIX}/sido/`)) return !touchedSidos || touchedSidos.has(nameIn(s.key, 'sido'))
+    // orphan은 1만 건·11MB라 시군구 없는 물건이 바뀐 경우에만 쓴다.
+    if (s.key === `${PREFIX}/orphan.json`) return touchedOrphan !== false
+    // recent/deadline은 전국 집계라 항상 다시 쓴다(작고, 마감 상태가 매번 바뀐다).
+    return true
   })
 
   // 순차 저장은 샤드 수에 비례해 느려진다. 소량 병렬로 묶어 쓴다.

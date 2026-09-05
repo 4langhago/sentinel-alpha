@@ -13,7 +13,7 @@
 //   - ltnoPnu(PNU 19자리) 앞 5자리가 그대로 시군구 법정동코드다
 import { pick, toInt, toFloat, readError, normalizeServiceKey } from './xmlPick.mjs'
 import {
-  SIDO_ALIASES,
+  resolveSido,
   SIDO_TO_ONBID,
   sggCodeFromPnu,
   toAuctionStatus,
@@ -81,8 +81,9 @@ function normalizeItem(body, seenAt) {
   // 건물만 있는 물건은 PNU가 비어 이름 매칭으로 시도까지만 알아낸다.
   const sggCode = sggCodeFromPnu(g('ltnoPnu') || g('rdnmPnu'))
   const sidoRaw = g('lctnSdnm')
-  const sido = SIDO_ALIASES[sidoRaw] || sidoRaw
   const sgg = g('lctnSggnm')
+  // 통합 시도명(전남광주통합특별시)은 시군구까지 봐야 광주/전남을 가를 수 있다.
+  const sido = resolveSido(sidoRaw, sgg)
   const umd = g('lctnEmdNm')
 
   const appraisal = toInt(g('apslEvlAmt'))

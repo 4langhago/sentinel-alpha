@@ -52,15 +52,17 @@ export default async (req) => {
 
     // 스케줄 함수와 같은 코드를 쓴다. 예전엔 여기서 따로 전량 수집을 호출해,
     // 스케줄만 증분으로 고쳤을 때 수동 트리거가 옛 동작으로 남을 뻔했다.
-    const { runAuctionRefresh } = await import('./lib/refreshAuctions.mjs')
+    const { runAuctionRefresh, DEFAULT_COLLECT_BUDGET_SEC } = await import('./lib/refreshAuctions.mjs')
 
     const result = await runAuctionRefresh({
       serviceKey: onbidKey,
       maxCalls: url.searchParams.get('max_calls')
         ? Math.min(1000, Math.max(1, Number(url.searchParams.get('max_calls'))))
         : undefined,
-      // 수동 트리거는 사람이 기다리는 복구 수단이라 넉넉히 준다.
-      maxSeconds: Math.min(600, Math.max(10, Number(url.searchParams.get('max_seconds') || 120))),
+      // 수동 트리거도 같은 함수 안에서 도는 이상 30초 벽을 넘을 수 없다.
+      // 예전엔 기본 120초를 줬는데, 수집만 하다 30초에 잘려 저장까지 못 갔다.
+      // 저장·병합 몫을 남겨 스케줄과 같은 예산을 기본으로 쓴다.
+      maxSeconds: Math.min(25, Math.max(3, Number(url.searchParams.get('max_seconds') || DEFAULT_COLLECT_BUDGET_SEC))),
       // ?full=1 이면 증분 가능해도 전량으로 훑는다. 인덱스가 어긋났을 때 쓴다.
       forceFull: url.searchParams.get('full') === '1',
       log: (m) => console.log('[refresh-now:auctions]', m),

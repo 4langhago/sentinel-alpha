@@ -134,7 +134,19 @@ const main = async () => {
 
   if (payload.items.length === 0) return fail('', '수집된 물건이 0건입니다. 저장하지 않습니다.')
 
-  const finalPayload = await mergeAuctionsWithStored(payload, seenIds, seenAt, (m) => console.log('  ', m))
+  // --rebuild: 기존 샤드를 온전히 못 읽어도 병합을 진행한다.
+  // orphan 샤드(시군구 코드 없는 물건 보관)가 없던 시절 데이터를 되살리는 용도다 —
+  // 그 샤드를 만들려면 저장해야 하는데, 저장은 복원 검사에 막히는 순환을 푼다.
+  // 이번 수집이 전량일 때만 안전하다(부분 수집에 쓰면 그만큼 잃는다).
+  const rebuild = args.includes('--rebuild')
+  if (rebuild) console.log('  --rebuild: 기존 데이터 복원이 부족해도 진행합니다(전량 수집일 때만 쓰세요).')
+  const finalPayload = await mergeAuctionsWithStored(
+    payload,
+    seenIds,
+    seenAt,
+    (m) => console.log('  ', m),
+    { allowIncomplete: rebuild }
+  )
   if (!finalPayload) return fail('', '기존 데이터 확인에 실패해 저장을 건너뜁니다.')
 
   await saveShards(finalPayload, { force: args.includes('--force') })

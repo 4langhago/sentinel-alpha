@@ -144,7 +144,11 @@ async function loadAuctionScope({ sggCodes, sido, deadlineOnly }, index) {
   }
   if (deadlineOnly && sggCodes.length === 0 && !sido) {
     const shard = await readAuctionShard('auction/deadline.json')
-    if (shard?.items) {
+    // deadline.json도 recent.json과 같은 함정이 있다 — "마감이 가장 가까운 500건"이라
+    // 수집이 밀리면 **정확히 그 500건이 먼저 만료된다**. 그러면 마감임박 필터가
+    // 0건을 돌려주는데, 실제로는 오늘 마감인 물건이 얼마든지 있다. 실제로 그랬다.
+    // 진행 중인 물건이 하나도 남지 않았으면 아래 전국 경로로 내려가 다시 만든다.
+    if (shard?.items?.some((it) => effectiveStatus(it) !== 'CLOSED')) {
       return { items: shard.items, scope: 'deadline', isLive: true, source: index.source, truncated: false }
     }
   }
@@ -461,7 +465,40 @@ export default async (req) => {
       })
     }
 
-    const pre = sggCode ? auctionIndex.sgg?.[sggCode] : sido ? auctionIndex.sido?.[sido] : null
+    // 시군구를 고르면 사전 계산값 대신 그 샤드에서 직접 다시 센다.
+    //
+    // 인덱스의 sgg 집계는 **수집 시점의 status**로 계산돼 있어, 시간이 지나면
+    // 마감된 물건이 여전히 "진행 중"으로 잡힌다. 실측(수집 4일 경과): 강남구
+    // open 489 vs 실제 480, 해운대구는 median_discount_rate가 60%로 나오지만
+    // 실제로는 52%였다. 체감률은 이 서비스의 핵심 지표라 10%p 오차를 둘 수 없다.
+    //
+    // 시군구 샤드는 잘리지 않아 그 지역 전체가 들어 있으므로 재계산이 정확하다.
+    // (시도는 샤드가 3,000건으로 잘려 있어 재계산이 오히려 틀리므로 사전 계산값을 쓴다.)
+    let recomputed = null
+    if (sggCode) {
+      const shard = await readAuctionShard(`auction/sgg/${sggCode}.json`)
+      if (shard?.items?.length) {
+        const fresh = withEffectiveStatus(shard.items)
+        recomputed = { ...(auctionIndex.sgg?.[sggCode] || {}), ...computeAuctionStats(fresh) }
+      }
+    }
+
+    const pre = recomputed || (sggCode ? auctionIndex.sgg?.[sggCode] : sido ? auctionIndex.sido?.[sido] : null)
+
+    // 지역을 골랐는데 그 지역 집계가 없으면(물건이 0건인 시도 등) 전국 수치로
+    // 폴백하면 안 된다. "전남 69,313건"처럼 명백히 틀린 숫자가 요약 카드에 찍힌다.
+    // 실제로 그랬다 — 0을 정직하게 돌려주는 편이 낫다.
+    if (!pre && (sggCode || sido)) {
+      return json({
+        count: 0,
+        open_count: 0,
+        closed_count: 0,
+        source: auctionIndex.source,
+        is_live: true,
+        last_update: auctionIndex.last_update || null,
+      })
+    }
+
     // 지역 미지정이면 전국 집계. 예전 인덱스에는 overall이 없어 건수만 되돌린다.
     const base = pre ||
       auctionIndex.overall || {
