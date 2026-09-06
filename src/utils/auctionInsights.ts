@@ -205,7 +205,9 @@ export function buildInsights(
     })
   }
 
-  if (item.discount_rate !== null && item.discount_rate <= 30) {
+  // 경계(30%)는 점수의 체감률 꼭대기 하한과 같은 값이다. 여기서 어긋나면
+  // 같은 카드가 "만점"과 "과도한 저감"을 동시에 말하게 된다(실제로 그랬다).
+  if (item.discount_rate !== null && item.discount_rate < 30) {
     out.push({
       kind: 'warning',
       label: '과도한 저감',

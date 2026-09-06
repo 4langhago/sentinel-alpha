@@ -64,14 +64,37 @@ describe('단조성', () => {
     expect(mid).toBeGreaterThan(full)
   })
 
-  it('30% 아래로는 더 싸다고 점수가 오르지 않는다', () => {
-    // 감정가의 1~3%까지 떨어진 물건이 순위 최상위를 독점하던 문제.
-    // 그 가격대는 할인이 아니라 시장이 사지 않는 사유가 있는 구간이다.
+  it('체감률 점수는 30~45%가 꼭대기이고 양쪽으로 내려간다', () => {
+    // 인사이트가 30% 아래를 "과도한 저감"으로 경고하는데 점수는 만점을 주고 있었다.
+    // 실측 65,380건 중 18,795건(28.7%)이 같은 카드에서 "40/40 만점"과 경고를
+    // 동시에 보여줬다. 곡선을 꺾어 둘이 같은 방향을 가리키게 했다.
     const axis = (rate: number) =>
       scoreAuction(item({ discount_rate: rate })).axes.find((a) => a.key === 'discount')!.points
+
+    // 꼭대기 구간은 만점
     expect(axis(30)).toBe(WEIGHTS.discount)
-    expect(axis(10)).toBe(WEIGHTS.discount)
-    expect(axis(1)).toBe(WEIGHTS.discount)
+    expect(axis(40)).toBe(WEIGHTS.discount)
+    expect(axis(45)).toBe(WEIGHTS.discount)
+
+    // 위쪽: 비쌀수록 낮다
+    expect(axis(60)).toBeLessThan(axis(45))
+    expect(axis(100)).toBe(0)
+
+    // 아래쪽: 더 싸질수록 다시 낮아진다 — 이게 이번에 바뀐 부분이다
+    expect(axis(20)).toBeLessThan(axis(30))
+    expect(axis(3)).toBeLessThan(axis(20))
+
+    // 다만 0으로 떨어뜨리지는 않는다. "확인할 가치도 없다"는 우리가 아는 것보다 센 주장이다.
+    expect(axis(1)).toBeGreaterThan(0)
+  })
+
+  it('경고 구간과 만점 구간이 겹치지 않는다', () => {
+    // 이 계약이 깨지면 카드가 스스로 모순된 말을 하게 된다.
+    const axis = (rate: number) =>
+      scoreAuction(item({ discount_rate: rate })).axes.find((a) => a.key === 'discount')!.points
+    for (const rate of [1, 5, 10, 15, 20, 25, 28]) {
+      expect(axis(rate)).toBeLessThan(WEIGHTS.discount)
+    }
   })
 
   it('설명되지 않는 헐값은 오히려 감점된다', () => {
