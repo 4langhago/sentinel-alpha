@@ -8,6 +8,7 @@ import {
 } from '../types/auction'
 import { formatPrice, toPyeong } from '../types/trade'
 import AuctionInsights from './AuctionInsights'
+import AuctionScorePanel from './AuctionScorePanel'
 import type { RegionStats } from '../types/trade'
 
 /** 시세 비교에 필요한 부분만 받는다. */
@@ -166,6 +167,8 @@ const AuctionCard = ({ item, marketStats }: Props) => {
         {/* 시세 대비는 AuctionInsights가 근거와 함께 보여준다.
             숫자만 두 곳에 흩어두면 한쪽이 갱신에서 빠질 때 서로 어긋난다. */}
       </div>
+
+      <AuctionScorePanel item={item} marketStats={marketStats} />
 
       <AuctionInsights item={item} marketStats={marketStats} />
 
