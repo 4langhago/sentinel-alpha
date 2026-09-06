@@ -47,8 +47,27 @@ export const WEIGHTS = {
 
 const clamp01 = (v) => Math.max(0, Math.min(1, v))
 
-/** 체감률 축의 0~1 비율. 감정가 100%면 0, 50% 이하면 1. */
-const discountRatio = (rate) => clamp01((100 - rate) / 50)
+/**
+ * 체감률 축의 0~1 비율. 감정가 100%면 0, 30% 이하면 1이고 그 아래로는 더
+ * 오르지 않는다.
+ *
+ * 만점 구간을 50%가 아니라 30%에 두고 포화시키는 이유: 실측(2026-09-06,
+ * 시군구 샤드 69,753건)에서 감정가의 5% 이하인 물건이 2,542건(3.6%)이다.
+ * 감정가의 1~3%는 정상적인 할인이 아니라 지분·맹지·분묘·법정지상권처럼
+ * 시장이 사지 않는 사유가 있거나 감정가 자체가 잘못 들어온 경우다.
+ * 싸질수록 점수가 계속 오르게 두면 순위 최상위가 그런 물건으로 채워진다
+ * — 실제로 경기 점수순 상위 5건이 전부 "감정가의 1~3% · 유찰 15회"였다.
+ * 초보자를 정확히 함정으로 안내하는 셈이라, 일정 지점 이상은 더 싸다고
+ * 더 좋게 보지 않는다.
+ */
+const DISCOUNT_FULL_AT = 30
+const discountRatio = (rate) => clamp01((100 - rate) / (100 - DISCOUNT_FULL_AT))
+
+/**
+ * 설명되지 않는 헐값의 경계.
+ * 이보다 낮으면 왜 안 팔리는지를 데이터로 알 수 없다는 뜻으로 보고 감점한다.
+ */
+const UNEXPLAINED_BELOW = 20
 
 /** 시세 축의 0~1 비율. 중위값과 같으면 0, 40% 이상 싸면 1. */
 const marketRatio = (perPyeong, median) => clamp01(-((perPyeong - median) / median) / 0.4)
@@ -60,6 +79,15 @@ const failRatio = (n) => clamp01(n / 5)
 function penaltyOf(item) {
   const reasons = []
   let sum = 0
+  const rate = item.discount_rate
+  if (rate !== null && rate !== undefined && rate < UNEXPLAINED_BELOW) {
+    sum += 10
+    reasons.push(
+      `감정가의 ${rate}%까지 떨어짐 -10 (이 가격대는 지분·맹지·분묘·` +
+        '법정지상권처럼 시장이 사지 않는 사유가 있거나 감정가가 잘못 들어온 경우다. ' +
+        '사유가 데이터에 드러나지 않으므로 공고문과 등기부등본을 직접 봐야 한다)'
+    )
+  }
   if (item.share_deal) {
     sum += 12
     reasons.push('지분 매각 -12 (단독 처분 불가, 공유물분할청구소송으로 장기화)')
@@ -134,8 +162,10 @@ export function scoreAuction(item, marketStats) {
       max: WEIGHTS.discount,
       basis:
         `최저입찰가가 감정가의 ${item.discount_rate}%. ` +
-        `100%를 0점, 50% 이하를 만점으로 환산해 ${points}점. ` +
-        '감정 시점이 6개월 이상 앞설 수 있어 체감률이 곧 시세 대비 할인은 아니다.',
+        `100%를 0점, ${DISCOUNT_FULL_AT}% 이하를 만점으로 환산해 ${points}점. ` +
+        `${DISCOUNT_FULL_AT}%보다 더 내려가도 점수는 오르지 않는다 — 그 아래는 ` +
+        '싸다기보다 시장이 사지 않는 사유가 있는 구간이다. ' +
+        '감정 시점이 6개월 이상 앞설 수 있어 체감률이 곧 시세 대비 할인도 아니다.',
     })
   } else {
     caveats.push(

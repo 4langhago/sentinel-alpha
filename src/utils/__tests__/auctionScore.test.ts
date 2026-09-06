@@ -56,12 +56,32 @@ describe('배점', () => {
 })
 
 describe('단조성', () => {
-  it('체감률이 낮을수록(싸질수록) 점수가 높다', () => {
-    const cheap = scoreAuction(item({ discount_rate: 50 })).total
+  it('체감률이 낮을수록(싸질수록) 점수가 높다 — 30%까지만', () => {
+    const cheap = scoreAuction(item({ discount_rate: 40 })).total
     const mid = scoreAuction(item({ discount_rate: 75 })).total
     const full = scoreAuction(item({ discount_rate: 100 })).total
     expect(cheap).toBeGreaterThan(mid)
     expect(mid).toBeGreaterThan(full)
+  })
+
+  it('30% 아래로는 더 싸다고 점수가 오르지 않는다', () => {
+    // 감정가의 1~3%까지 떨어진 물건이 순위 최상위를 독점하던 문제.
+    // 그 가격대는 할인이 아니라 시장이 사지 않는 사유가 있는 구간이다.
+    const axis = (rate: number) =>
+      scoreAuction(item({ discount_rate: rate })).axes.find((a) => a.key === 'discount')!.points
+    expect(axis(30)).toBe(WEIGHTS.discount)
+    expect(axis(10)).toBe(WEIGHTS.discount)
+    expect(axis(1)).toBe(WEIGHTS.discount)
+  })
+
+  it('설명되지 않는 헐값은 오히려 감점된다', () => {
+    // 감정가의 3%짜리가 30%짜리보다 총점이 높으면 안 된다 —
+    // 실제로 경기 점수순 상위 5건이 전부 그런 물건이었다.
+    const sane = scoreAuction(item({ discount_rate: 30, fail_count: 5 })).total
+    const absurd = scoreAuction(item({ discount_rate: 3, fail_count: 15 })).total
+    expect(absurd).toBeLessThan(sane)
+    const pen = scoreAuction(item({ discount_rate: 3 })).axes.find((a) => a.key === 'penalty')
+    expect(pen?.basis).toContain('감정가의 3%까지 떨어짐')
   })
 
   it('시세보다 쌀수록 시세 축 점수가 높다', () => {
