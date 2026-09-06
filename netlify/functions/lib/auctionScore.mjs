@@ -129,23 +129,24 @@ function comparable(item, marketStats) {
 }
 
 /**
- * 잴 수 있었던 것만으로 100점 만점을 만든다.
+ * 총점은 축 점수를 그대로 더한 값이다. 확인 가능한 배점(attainable)으로
+ * 나눠 100점으로 환산하지 **않는다**.
  *
- * 왜 단순 합산이 아닌가: 시세축 30점을 받을 수 있는 물건은 전체의 10.1%뿐이다
- * (실측 2026-09-06, 69,753건 중 7,036건 — 매각이면서 아파트·오피스텔이고
- * 면적이 있는 물건). 나머지 89.9%는 토지·상가라서, 혹은 같은 시군구 실거래
- * 표본이 모자라서 그 30점을 애초에 받을 수 없다. 단순 합산이면 이들이
- * 구조적으로 50점에 묶여, 물건이 나빠서가 아니라 우리가 못 재서 순위가
- * 밀린다. 아파트만 상위에 올라오는 순위는 "추천"이 아니라 측정 편향이다.
+ * 한 번 환산해 봤다가 되돌렸다. 시세축을 못 받는 물건은 분모가 50이라
+ * 체감률·유찰 두 축만 만점이면 그대로 100점이 됐고, 실측 65,380건 중
+ * 126건이 "감정가의 20~30% · 유찰 5~8회 · 토지"로 100점 만점을 받았다.
+ * 상위 500건 중 아파트는 8건뿐이었다. 아파트 편향을 없애려던 것이
+ * "아무것도 확인할 수 없는 물건일수록 높은 점수"라는 정반대 편향을 만들었다.
+ * 시군구 중위값과 비교하면 오해가 된다고 우리 스스로 제외한 토지가,
+ * 비교하지 못했다는 이유로 만점을 받는 것은 앞뒤가 맞지 않는다.
  *
- * 그래서 받을 수 있었던 배점(attainable)으로 나눠 환산한다. 무엇을 못 쟀는지는
- * caveats로 그대로 노출하므로, 점수가 높다고 정보가 많다는 뜻은 아니라는 것을
- * 사용자가 확인할 수 있다. 감점은 환산 뒤에 뺀다 — 실제로 더 드는 돈과
- * 시간이라 측정 가능 여부와 무관하게 같은 무게여야 한다.
+ * 그래서 분모를 없애는 대신 **드러낸다**. 화면은 "62 / 80"처럼 확인 가능한
+ * 배점과 함께 보여준다. 토지가 45/50에 머무는 것은 물건이 나쁘다는 뜻이
+ * 아니라 우리가 절반밖에 확인하지 못했다는 뜻이고, 그 사실이 숨겨지는 것보다
+ * 보이는 편이 낫다.
  */
-function normalize(earned, attainable, penalty) {
-  if (attainable <= 0) return 0
-  return Math.max(0, Math.min(100, Math.round((earned / attainable) * 100) - penalty))
+function sumAxes(axes) {
+  return Math.max(0, axes.reduce((sum, a) => sum + a.points, 0))
 }
 
 /**
@@ -172,7 +173,7 @@ export function scoreTotal(item, marketStats) {
     attainable += WEIGHTS.market
   }
   if (item.fail_count > 0) earned += Math.round(failRatio(item.fail_count) * WEIGHTS.failCount)
-  return normalize(earned, attainable, penaltyOf(item).points)
+  return Math.max(0, earned - penaltyOf(item).points)
 }
 
 /**
@@ -278,15 +279,12 @@ export function scoreAuction(item, marketStats) {
     })
   }
 
-  // 받을 수 있었던 배점만 분모로 삼는다(normalize 주석 참조).
-  // 유찰 축은 유찰 0회여도 "잴 수 있었으나 0점"이므로 분모에 항상 들어간다.
+  // 확인 가능한 배점. 총점을 여기에 맞춰 나누지 않고, 화면에 함께 보여준다.
+  // 유찰 축은 0회여도 "확인했고 0점"이므로 체감률을 잰 물건이면 늘 포함한다.
   const attainable =
-    (axes.some((a) => a.key === 'discount') ? WEIGHTS.discount : 0) +
-    (axes.some((a) => a.key === 'market') ? WEIGHTS.market : 0) +
-    (axes.some((a) => a.key === 'discount') ? WEIGHTS.failCount : 0)
-  const earned = axes.filter((a) => a.points > 0).reduce((sum, a) => sum + a.points, 0)
-  const penalty = -axes.filter((a) => a.points < 0).reduce((sum, a) => sum + a.points, 0)
-  const total = normalize(earned, attainable, penalty)
+    (axes.some((a) => a.key === 'discount') ? WEIGHTS.discount + WEIGHTS.failCount : 0) +
+    (axes.some((a) => a.key === 'market') ? WEIGHTS.market : 0)
+  const total = sumAxes(axes)
   // 체감률조차 못 구한 물건은 순위에 올리지 않는다. 낮은 점수가 아니라
   // "잴 수 없는 물건"이며, 둘을 섞으면 순위가 거짓말이 된다.
   const scorable = axes.some((a) => a.key === 'discount')

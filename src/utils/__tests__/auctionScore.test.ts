@@ -197,36 +197,52 @@ describe('빠른 경로와 근거 경로의 일치', () => {
   })
 })
 
-describe('잴 수 있었던 배점으로 환산', () => {
-  // 시세축 30점을 받을 수 있는 물건은 전체의 10.1%뿐이다(실측 69,753건 중 7,036건).
-  // 단순 합산이면 나머지 89.9%가 물건이 나빠서가 아니라 우리가 못 재서 50점에
-  // 묶여, 순위가 아파트·오피스텔로 쏠린다. 그건 추천이 아니라 측정 편향이다.
-  const same = { discount_rate: 60, fail_count: 2, min_bid_price: 300_000_000 }
+describe('확인 가능한 배점은 분모로 드러낼 뿐 환산하지 않는다', () => {
+  // 한 번 환산했다가 되돌린 자리다. 시세축이 없는 물건은 분모가 50이라
+  // 두 축만 만점이면 100점이 됐고, 실측 65,380건 중 126건이
+  // "감정가의 20~30% · 유찰 5~8회 · 토지"로 만점을 받았다. 상위 500 중
+  // 아파트는 8건뿐이었다 — 확인할 수 없는 물건일수록 높은 점수라는
+  // 정반대 편향이다. 이 테스트가 그 회귀를 막는다.
+  const strong = { discount_rate: 25, fail_count: 8, min_bid_price: 300_000_000 }
 
-  it('시세축을 못 받는 종목이 그 이유만으로 밀리지 않는다', () => {
-    const apt = scoreAuction(item({ ...same, property_type: 'APARTMENT' }), market)
+  it('시세 비교를 못 하는 물건이 만점을 받지 못한다', () => {
     const land = scoreAuction(
-      item({ ...same, property_type: 'LAND', area: 0, land_area: 500 }),
+      item({ ...strong, property_type: 'LAND', area: 0, land_area: 500 }),
       market
     )
-    // 토지는 시세축이 없지만, 잴 수 있었던 50점 기준으로 환산돼 비슷한 수준에 선다.
     expect(land.attainable).toBe(WEIGHTS.discount + WEIGHTS.failCount)
-    expect(apt.attainable).toBe(WEIGHTS.discount + WEIGHTS.market + WEIGHTS.failCount)
-    expect(land.total).toBeGreaterThan(40)
+    expect(land.total).toBeLessThanOrEqual(land.attainable)
+    expect(land.total).toBeLessThan(100)
   })
 
-  it('총점은 0~100 안에 있다', () => {
+  it('총점은 축 점수의 단순 합이다 — 분모로 나누지 않는다', () => {
+    for (const p of [
+      { property_type: 'LAND' as const, area: 0, land_area: 300 },
+      { property_type: 'APARTMENT' as const },
+      { ...strong, share_deal: true },
+    ]) {
+      const s = scoreAuction(item(p), market)
+      const sum = Math.max(0, s.axes.reduce((n, a) => n + a.points, 0))
+      expect(s.total).toBe(sum)
+    }
+  })
+
+  it('분모는 확인한 축만 더한 값이다', () => {
+    const apt = scoreAuction(item({ property_type: 'APARTMENT' }), market)
+    expect(apt.attainable).toBe(WEIGHTS.discount + WEIGHTS.market + WEIGHTS.failCount)
+  })
+
+  it('총점이 0 이상이고 유한하다', () => {
     for (const rate of [1, 20, 30, 60, 100, 150]) {
       for (const fc of [0, 3, 20]) {
         const t = scoreAuction(item({ discount_rate: rate, fail_count: fc }), market).total
         expect(t).toBeGreaterThanOrEqual(0)
-        expect(t).toBeLessThanOrEqual(100)
         expect(Number.isFinite(t)).toBe(true)
       }
     }
   })
 
-  it('환산 뒤에도 두 경로가 일치한다', () => {
+  it('되돌린 뒤에도 두 경로가 일치한다', () => {
     for (const p of [
       { property_type: 'LAND' as const, area: 0, land_area: 300 },
       { property_type: 'APARTMENT' as const },

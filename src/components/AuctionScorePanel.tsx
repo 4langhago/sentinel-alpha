@@ -24,10 +24,13 @@ const AuctionScorePanel = ({ item, marketStats }: Props) => {
   // 잴 수 없는 물건에 0점을 띄우면 "나쁜 물건"으로 읽힌다. 아예 감춘다.
   if (!score.scorable) return null
 
+  // 색은 절대 점수가 아니라 확인 가능한 배점 대비로 정한다. 토지는 분모가
+  // 50이라 절대 점수로 색을 고르면 아무리 조건이 좋아도 늘 회색이 된다.
+  const ratio = score.attainable > 0 ? score.total / score.attainable : 0
   const tone =
-    score.total >= 70
+    ratio >= 0.75
       ? 'text-emerald-600 dark:text-emerald-400'
-      : score.total >= 45
+      : ratio >= 0.5
         ? 'text-violet-600 dark:text-violet-400'
         : 'text-gray-500 dark:text-gray-400'
 
@@ -41,7 +44,10 @@ const AuctionScorePanel = ({ item, marketStats }: Props) => {
         <Sigma className={`w-3.5 h-3.5 shrink-0 ${tone}`} />
         <span className="text-xs font-semibold text-gray-700 dark:text-gray-200">추천 점수</span>
         <span className={`text-lg font-black leading-none ${tone}`}>{score.total}</span>
-        <span className="text-[11px] text-gray-400 dark:text-gray-500">/ 100</span>
+        {/* 분모는 100이 아니라 이 물건에서 확인 가능했던 배점이다.
+            토지가 45/50에 머무는 것은 나쁜 물건이라는 뜻이 아니라
+            우리가 절반만 확인했다는 뜻이고, 그게 보여야 한다. */}
+        <span className="text-[11px] text-gray-400 dark:text-gray-500">/ {score.attainable}</span>
         <span className="ml-auto shrink-0 inline-flex items-center gap-0.5 text-[11px] font-semibold text-violet-600 dark:text-violet-400">
           {open ? '근거 접기' : '근거 보기'}
           {open ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
@@ -99,15 +105,17 @@ const AuctionScorePanel = ({ item, marketStats }: Props) => {
               ))}
             </ul>
             <p className="mt-2 text-[10px] leading-relaxed text-gray-400 dark:text-gray-500">
-              총점은 <strong>이 물건에서 잴 수 있었던 배점 {score.attainable}점</strong>을 100점으로
-              환산한 뒤 감점을 뺀 값입니다. 그래서 위 축 점수의 단순 합과 다릅니다. 전체 배점은
-              감정가 대비 {WEIGHTS.discount}점 · 시세 대비 {WEIGHTS.market}점 · 유찰{' '}
+              분모 {score.attainable}점은 <strong>이 물건에서 확인 가능했던 배점</strong>입니다.
+              전체 배점은 감정가 대비 {WEIGHTS.discount}점 · 시세 대비 {WEIGHTS.market}점 · 유찰{' '}
               {WEIGHTS.failCount}점, 감점 최대 {WEIGHTS.penalty}점입니다.
               {score.attainable < WEIGHTS.discount + WEIGHTS.market + WEIGHTS.failCount && (
                 <>
                   {' '}
-                  못 잰 항목이 있어도 불리하지 않도록 환산하지만,{' '}
-                  <strong>점수가 높다고 이 물건을 더 많이 안다는 뜻은 아닙니다.</strong>
+                  이 물건은 시세 비교를 할 수 없어 분모가 작습니다.{' '}
+                  <strong>
+                    분모가 다른 물건끼리 점수를 직접 비교하지 마세요 — 같은 용도로 좁혀서 보면
+                    같은 기준으로 줄을 섭니다.
+                  </strong>
                 </>
               )}{' '}
               이 가중치는 업계 표준이 아니라 이 서비스가 정한 것이며, 투자 권유가 아닙니다.
