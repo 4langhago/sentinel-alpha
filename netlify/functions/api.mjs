@@ -236,7 +236,36 @@ async function loadAuctionScope({ sggCodes, sido, deadlineOnly }, index) {
   }
 }
 
+/**
+ * 요청 처리의 바깥 울타리.
+ *
+ * 왜 필요한가: readAuctionShard가 손상된 샤드를 만나면 이제 던진다(조용히
+ * null을 돌려주다가 물건 10,876건을 통째로 잃을 뻔한 뒤 바꿨다). 그런데 이
+ * 함수에는 try가 하나도 없어서, 그 예외가 그대로 플랫폼까지 올라가 사용자는
+ * 우리가 쓰지 않은 502 오류 화면을 보게 된다. 로그에 시끄럽게 남기려던 것이
+ * 화면까지 시끄럽게 만들 이유는 없다.
+ *
+ * 그래서 서버 로그에는 원래 예외를 그대로 남기고, 사용자에게는 화면이
+ * 처리할 수 있는 503 JSON을 돌려준다. 데이터를 조용히 잃지 않겠다는 원래
+ * 의도는 로그 쪽에 그대로 남는다.
+ */
 export default async (req) => {
+  try {
+    return await handle(req)
+  } catch (e) {
+    console.error('[api] 처리 실패:', req.url, e)
+    return json(
+      {
+        detail:
+          '데이터를 불러오지 못했습니다. 저장된 자료가 손상됐거나 일시적인 오류입니다. ' +
+          '잠시 후 다시 시도해 주세요.',
+      },
+      503
+    )
+  }
+}
+
+const handle = async (req) => {
   const url = new URL(req.url)
   const path = url.pathname.replace(/^\/api/, '') || '/'
   const q = url.searchParams
