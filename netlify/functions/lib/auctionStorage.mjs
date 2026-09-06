@@ -58,6 +58,70 @@ export const SIDO_SHARD_LIMIT = 3000
 /** 마감임박 샤드 크기 */
 export const DEADLINE_SHARD_LIMIT = 500
 
+/**
+ * 전국 목록 샤드를 재산유형 비례로 채운다.
+ *
+ * 왜 단순 절단이 아닌가: recent.json은 마감임박순 상위 3,000건이었는데,
+ * 압류재산은 매각 일정이 뒤쪽에 몰려 상위 3,000건에 거의 들어오지 못했다.
+ * 실측(2026-09-05) 전체 80,629건 중 압류재산이 59,792건(74%)인데
+ * recent.json에는 0건이었다 — 전국 화면에서 재산유형을 압류재산으로 거르면
+ * 조용히 0건이 나왔다. 지역을 고르면 시도 샤드라 정상이었으므로 더 헷갈렸다.
+ *
+ * 유형별로 전체 비중만큼 자리를 나눠 주고, 각 유형 안에서는 마감임박순으로
+ * 앞에서 가져온다. 작은 유형이 0자리로 밀리지 않도록 최소 한 자리를 보장한다.
+ */
+const RECENT_MIN_PER_DIVISION = 50
+
+export function pickRecent(sortedItems, limit = RECENT_SHARD_LIMIT) {
+  if (sortedItems.length <= limit) return sortedItems
+
+  const groups = new Map()
+  for (const it of sortedItems) {
+    const key = it.prpt_div || '(미분류)'
+    if (!groups.has(key)) groups.set(key, [])
+    groups.get(key).push(it)
+  }
+  if (groups.size <= 1) return sortedItems.slice(0, limit)
+
+  // 비중대로 배분하되 유형마다 최소치를 보장한다. 최소치 합이 한도를 넘으면
+  // 균등 분배로 물러난다(유형 수가 늘어도 깨지지 않게).
+  const total = sortedItems.length
+  const minEach = Math.min(RECENT_MIN_PER_DIVISION, Math.floor(limit / groups.size))
+  const quota = new Map()
+  let assigned = 0
+  for (const [key, list] of groups) {
+    const want = Math.max(minEach, Math.round((list.length / total) * limit))
+    const give = Math.min(want, list.length)
+    quota.set(key, give)
+    assigned += give
+  }
+  // 배분 합이 한도를 넘으면 큰 유형부터 비례로 깎는다.
+  if (assigned > limit) {
+    const scale = limit / assigned
+    assigned = 0
+    for (const [key, give] of quota) {
+      const cut = Math.max(Math.min(give, minEach), Math.floor(give * scale))
+      quota.set(key, cut)
+      assigned += cut
+    }
+  }
+  // 남는 자리는 아직 안 쓴 물건이 있는 유형에 큰 순서로 채운다.
+  const order = [...groups.entries()].sort((a, b) => b[1].length - a[1].length)
+  let slack = limit - assigned
+  for (const [key, list] of order) {
+    if (slack <= 0) break
+    const room = list.length - quota.get(key)
+    if (room <= 0) continue
+    const add = Math.min(room, slack)
+    quota.set(key, quota.get(key) + add)
+    slack -= add
+  }
+
+  const picked = []
+  for (const [key, list] of groups) picked.push(...list.slice(0, quota.get(key)))
+  return picked.sort(byDefault)
+}
+
 /** 마감이 임박한 순. 종료일시가 없는 물건은 뒤로 민다. */
 const byDeadline = (a, b) => (a.bid_end_at || '9999').localeCompare(b.bid_end_at || '9999')
 /** 기본 목록 정렬: 아직 안 끝난 물건 우선, 그 안에서 마감임박순. */
@@ -151,7 +215,7 @@ export function buildAuctionShards(payload) {
     sidoStats[sido] = { sido, total: list.length, ...computeAuctionStats(list) }
   }
 
-  out.push({ key: `${PREFIX}/recent.json`, value: { items: items.slice(0, RECENT_SHARD_LIMIT) } })
+  out.push({ key: `${PREFIX}/recent.json`, value: { items: pickRecent(items) } })
 
   /**
    * 시군구 코드가 없는 물건(PNU가 빈 건물 물건)을 **잘라내지 않고** 모아 둔다.
@@ -167,8 +231,20 @@ export function buildAuctionShards(payload) {
 
   // 마감임박: 아직 안 끝났고 종료일시가 미래인 물건만. 사용자 체감 가치가 가장 큰 목록이다.
   const now = new Date().toISOString()
+  // 온비드가 "미정"을 2999년으로 적어 보내는 물건이 있다. 3년 앞을 넘는
+  // 종료일시는 실제 일정이 아니라고 보고 마감임박 판정에서만 제외한다.
+  const PLAUSIBLE_END_MAX = new Date(Date.now() + 3 * 365 * 24 * 60 * 60 * 1000).toISOString()
   const deadline = items
-    .filter((it) => it.status !== 'CLOSED' && it.bid_end_at && it.bid_end_at > now)
+    // 종료일시가 2999년 같은 자리표시자인 물건이 87건 있다(2026-09-05 실측).
+    // 마감임박 목록에 넣으면 D-day가 무의미해지므로 여기서만 제외한다
+    // — 목록·검색에서는 그대로 보인다.
+    .filter(
+      (it) =>
+        it.status !== 'CLOSED' &&
+        it.bid_end_at &&
+        it.bid_end_at > now &&
+        it.bid_end_at < PLAUSIBLE_END_MAX
+    )
     .sort(byDeadline)
     .slice(0, DEADLINE_SHARD_LIMIT)
   out.push({ key: `${PREFIX}/deadline.json`, value: { items: deadline } })

@@ -20,6 +20,7 @@
     "onbid:probe": "node scripts/probe-onbid.mjs",
     "blobs:upload": "node scripts/upload-to-blobs.mjs",
     "auction:repair-sido": "node scripts/repair-auction-sido.mjs",
+    "auction:rebuild-shards": "node scripts/rebuild-auction-shards.mjs",
     "test": "vitest run",
     "test:watch": "vitest"
   },
