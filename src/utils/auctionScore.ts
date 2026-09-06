@@ -39,6 +39,11 @@ export interface AuctionScore {
   scorable: boolean
   /** 점수에 반영되지 못한 것. 화면에 그대로 노출한다. */
   caveats: string[]
+  /**
+   * 이 물건에서 받을 수 있었던 배점의 합. 총점은 이걸 100점으로 환산한 값이다.
+   * 축 점수의 단순 합과 총점이 다른 이유이므로 화면에서 반드시 설명해야 한다.
+   */
+  attainable: number
 }
 
 export const WEIGHTS: {

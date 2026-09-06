@@ -99,9 +99,18 @@ const AuctionScorePanel = ({ item, marketStats }: Props) => {
               ))}
             </ul>
             <p className="mt-2 text-[10px] leading-relaxed text-gray-400 dark:text-gray-500">
-              배점은 감정가 대비 {WEIGHTS.discount}점 · 시세 대비 {WEIGHTS.market}점 · 유찰{' '}
-              {WEIGHTS.failCount}점, 감점 최대 {WEIGHTS.penalty}점입니다. 이 가중치는 업계 표준이
-              아니라 이 서비스가 정한 것이며, 투자 권유가 아닙니다.
+              총점은 <strong>이 물건에서 잴 수 있었던 배점 {score.attainable}점</strong>을 100점으로
+              환산한 뒤 감점을 뺀 값입니다. 그래서 위 축 점수의 단순 합과 다릅니다. 전체 배점은
+              감정가 대비 {WEIGHTS.discount}점 · 시세 대비 {WEIGHTS.market}점 · 유찰{' '}
+              {WEIGHTS.failCount}점, 감점 최대 {WEIGHTS.penalty}점입니다.
+              {score.attainable < WEIGHTS.discount + WEIGHTS.market + WEIGHTS.failCount && (
+                <>
+                  {' '}
+                  못 잰 항목이 있어도 불리하지 않도록 환산하지만,{' '}
+                  <strong>점수가 높다고 이 물건을 더 많이 안다는 뜻은 아닙니다.</strong>
+                </>
+              )}{' '}
+              이 가중치는 업계 표준이 아니라 이 서비스가 정한 것이며, 투자 권유가 아닙니다.
             </p>
           </div>
         </div>

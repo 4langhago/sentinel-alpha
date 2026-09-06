@@ -103,8 +103,21 @@ function penaltyOf(item) {
   return { points: Math.min(sum, WEIGHTS.penalty), reasons }
 }
 
+/**
+ * 매각이 아니라 임대로 나온 물건인지.
+ *
+ * 실측(2026-09-06) 69,753건 중 2,705건이 임대다. 이 물건의 감정가·최저입찰가는
+ * 매매가가 아니라 임대료(연액)라, 매각 물건과 같은 잣대를 대면 숫자가 통째로
+ * 거짓이 된다. 실제로 강원 원주의 임대 아파트 한 건이 "평당 41만원 ·
+ * 시세 대비 -96% · 시세축 만점"으로 나왔다 — 평당 41만원짜리 아파트로
+ * 오인하게 만드는 값이다. 임대는 점수를 매기지 않고 순위에서 뺀다.
+ */
+const isRental = (item) => item.disposal === '임대'
+
 /** 시세 비교에 쓸 실거래 통계를 종목에 맞춰 고른다. 없으면 null. */
 function comparable(item, marketStats) {
+  // 임대료를 매매 실거래 중위값과 비교하는 것은 단위가 다른 두 값을 나누는 것이다.
+  if (isRental(item)) return null
   const type = COMPARABLE.has(item.property_type) ? item.property_type : null
   if (!type) return null
   const own = marketStats?.per_property?.[type]
@@ -113,6 +126,26 @@ function comparable(item, marketStats) {
   const pyeong = sqm > 0 ? toPyeong(sqm) : 0
   if (pyeong <= 0) return null
   return { type, own, pyeong }
+}
+
+/**
+ * 잴 수 있었던 것만으로 100점 만점을 만든다.
+ *
+ * 왜 단순 합산이 아닌가: 시세축 30점을 받을 수 있는 물건은 전체의 10.1%뿐이다
+ * (실측 2026-09-06, 69,753건 중 7,036건 — 매각이면서 아파트·오피스텔이고
+ * 면적이 있는 물건). 나머지 89.9%는 토지·상가라서, 혹은 같은 시군구 실거래
+ * 표본이 모자라서 그 30점을 애초에 받을 수 없다. 단순 합산이면 이들이
+ * 구조적으로 50점에 묶여, 물건이 나빠서가 아니라 우리가 못 재서 순위가
+ * 밀린다. 아파트만 상위에 올라오는 순위는 "추천"이 아니라 측정 편향이다.
+ *
+ * 그래서 받을 수 있었던 배점(attainable)으로 나눠 환산한다. 무엇을 못 쟀는지는
+ * caveats로 그대로 노출하므로, 점수가 높다고 정보가 많다는 뜻은 아니라는 것을
+ * 사용자가 확인할 수 있다. 감점은 환산 뒤에 뺀다 — 실제로 더 드는 돈과
+ * 시간이라 측정 가능 여부와 무관하게 같은 무게여야 한다.
+ */
+function normalize(earned, attainable, penalty) {
+  if (attainable <= 0) return 0
+  return Math.max(0, Math.min(100, Math.round((earned / attainable) * 100) - penalty))
 }
 
 /**
@@ -125,19 +158,21 @@ function comparable(item, marketStats) {
  * @returns {number|null} 점수. 잴 수 없는 물건이면 null.
  */
 export function scoreTotal(item, marketStats) {
+  if (isRental(item)) return null
   const priced = item.min_bid_price > 0 && !item.min_bid_undisclosed
   if (item.discount_rate === null || item.discount_rate === undefined || !priced) return null
 
-  let total = Math.round(discountRatio(item.discount_rate) * WEIGHTS.discount)
+  let earned = Math.round(discountRatio(item.discount_rate) * WEIGHTS.discount)
+  let attainable = WEIGHTS.discount + WEIGHTS.failCount
 
   const cmp = comparable(item, marketStats)
   if (cmp) {
     const perPyeong = Math.round(item.min_bid_price / cmp.pyeong)
-    total += Math.round(marketRatio(perPyeong, cmp.own.median_per_pyeong) * WEIGHTS.market)
+    earned += Math.round(marketRatio(perPyeong, cmp.own.median_per_pyeong) * WEIGHTS.market)
+    attainable += WEIGHTS.market
   }
-  if (item.fail_count > 0) total += Math.round(failRatio(item.fail_count) * WEIGHTS.failCount)
-  total -= penaltyOf(item).points
-  return Math.max(0, total)
+  if (item.fail_count > 0) earned += Math.round(failRatio(item.fail_count) * WEIGHTS.failCount)
+  return normalize(earned, attainable, penaltyOf(item).points)
 }
 
 /**
@@ -149,6 +184,20 @@ export function scoreTotal(item, marketStats) {
 export function scoreAuction(item, marketStats) {
   const axes = []
   const caveats = []
+
+  if (isRental(item)) {
+    // 점수를 0으로 주지 않는다. 나쁜 물건이 아니라 다른 종류의 물건이다.
+    return {
+      total: 0,
+      axes: [],
+      attainable: 0,
+      scorable: false,
+      caveats: [
+        '매각이 아니라 임대로 나온 물건이다. 표시된 감정가·최저입찰가는 매매가가 ' +
+          '아니라 임대료라, 매매를 전제로 한 이 점수 체계를 적용하지 않는다.',
+      ],
+    }
+  }
   const priced = item.min_bid_price > 0 && !item.min_bid_undisclosed
   const hasRate = item.discount_rate !== null && item.discount_rate !== undefined
 
@@ -229,7 +278,15 @@ export function scoreAuction(item, marketStats) {
     })
   }
 
-  const total = Math.max(0, axes.reduce((sum, a) => sum + a.points, 0))
+  // 받을 수 있었던 배점만 분모로 삼는다(normalize 주석 참조).
+  // 유찰 축은 유찰 0회여도 "잴 수 있었으나 0점"이므로 분모에 항상 들어간다.
+  const attainable =
+    (axes.some((a) => a.key === 'discount') ? WEIGHTS.discount : 0) +
+    (axes.some((a) => a.key === 'market') ? WEIGHTS.market : 0) +
+    (axes.some((a) => a.key === 'discount') ? WEIGHTS.failCount : 0)
+  const earned = axes.filter((a) => a.points > 0).reduce((sum, a) => sum + a.points, 0)
+  const penalty = -axes.filter((a) => a.points < 0).reduce((sum, a) => sum + a.points, 0)
+  const total = normalize(earned, attainable, penalty)
   // 체감률조차 못 구한 물건은 순위에 올리지 않는다. 낮은 점수가 아니라
   // "잴 수 없는 물건"이며, 둘을 섞으면 순위가 거짓말이 된다.
   const scorable = axes.some((a) => a.key === 'discount')
@@ -239,7 +296,8 @@ export function scoreAuction(item, marketStats) {
       '반영되지 않았다. 이 점수는 얼마나 싸졌는지까지만 말한다.'
   )
 
-  return { total, axes, scorable, caveats }
+  // 축 점수의 합과 총점이 다른 이유(환산)를 화면이 설명할 수 있어야 한다.
+  return { total, axes, scorable, caveats, attainable }
 }
 
 /**

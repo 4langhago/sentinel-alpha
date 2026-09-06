@@ -80,3 +80,105 @@ describe('명도책임 인사이트', () => {
     expect(evictionInsight('')).toBeUndefined()
   })
 })
+
+describe('매각 / 임대 구분', () => {
+  // 실측 69,753건 중 2,705건이 임대다. 감정가·최저입찰가의 뜻이 매각과 달라
+  // (매매가가 아니라 임대료) 같은 잣대를 대면 "평당 41만원 아파트"가 나온다.
+  // 실제로 강원 원주 임대 아파트에서 시세 대비 -96%가 나왔다.
+  const rental = (o: Partial<AuctionItem> = {}) =>
+    buildInsights(
+      item({
+        disposal: '임대',
+        property_type: 'APARTMENT',
+        area: 59.69,
+        appraisal_price: 8_300_000,
+        min_bid_price: 7_470_000,
+        discount_rate: 90,
+        use_mcls: '주거용건물',
+        ...o,
+      }),
+      { per_property: { APARTMENT: { count: 200, median_per_pyeong: 10_000_000 } } } as never
+    )
+
+  it('임대 물건임을 먼저 경고한다', () => {
+    const got = rental().find((i) => i.label === '매각이 아니라 임대 물건')
+    expect(got?.kind).toBe('warning')
+    expect(got?.emphasis).toBe(true)
+  })
+
+  it('임대에는 매매 시세 비교를 붙이지 않는다', () => {
+    expect(rental().some((i) => i.label.endsWith('시세 대비'))).toBe(false)
+  })
+
+  it('임대에는 취득세를 계산하지 않는다', () => {
+    expect(rental().some((i) => i.label === '취득세 개산')).toBe(false)
+  })
+
+  it('매각 물건에는 둘 다 붙는다', () => {
+    const sale = buildInsights(
+      item({
+        disposal: '매각',
+        property_type: 'APARTMENT',
+        area: 84,
+        appraisal_price: 500_000_000,
+        min_bid_price: 350_000_000,
+        discount_rate: 70,
+        use_mcls: '주거용건물',
+      }),
+      { per_property: { APARTMENT: { count: 200, median_per_pyeong: 20_000_000 } } } as never
+    )
+    expect(sale.some((i) => i.label.endsWith('시세 대비'))).toBe(true)
+    expect(sale.some((i) => i.label === '취득세 개산')).toBe(true)
+  })
+})
+
+describe('권리분석 참고 항목', () => {
+  it('배분요구종기일을 날짜와 함께 짚는다', () => {
+    const got = buildInsights(item({ distribution_deadline: '2026/09/14' })).find((i) =>
+      i.label.startsWith('배분요구종기일')
+    )
+    expect(got?.kind).toBe('unknown')
+    expect(got?.label).toContain('2026/09/14')
+    expect(got?.basis).toContain('대항력')
+  })
+
+  it('종기일이 지났는지에 따라 설명이 달라진다', () => {
+    const past = buildInsights(item({ distribution_deadline: '2020/01/01' })).find((i) =>
+      i.label.startsWith('배분요구종기일')
+    )
+    const future = buildInsights(item({ distribution_deadline: '2099/01/01' })).find((i) =>
+      i.label.startsWith('배분요구종기일')
+    )
+    expect(past?.basis).toContain('이미 지났다')
+    expect(past?.emphasis).toBeFalsy()
+    expect(future?.basis).toContain('아직 지나지 않았다')
+    expect(future?.emphasis).toBe(true)
+  })
+
+  it('종기일이 없으면 항목을 만들지 않는다', () => {
+    expect(
+      buildInsights(item({ distribution_deadline: '' })).some((i) =>
+        i.label.startsWith('배분요구종기일')
+      )
+    ).toBe(false)
+  })
+
+  it('재산유형에 따라 근거 법령 안내가 다르다', () => {
+    const seized = buildInsights(item({ prpt_div: '압류재산' }))
+    const trust = buildInsights(item({ prpt_div: '기타일반재산' }))
+    expect(seized.some((i) => i.label.includes('국세징수법'))).toBe(true)
+    expect(trust.some((i) => i.label.includes('공고문이 계약조건'))).toBe(true)
+    // 서로 섞이면 안 된다 — 확인해야 할 문서가 다르다.
+    expect(seized.some((i) => i.label.includes('공고문이 계약조건'))).toBe(false)
+  })
+
+  it('드문 입찰 조건만 경고한다', () => {
+    const normal = buildInsights(item({ bid_method: '일반경쟁', bid_div: '전자입찰' }))
+    expect(normal.some((i) => i.label.includes('경쟁 물건'))).toBe(false)
+    expect(normal.some((i) => i.label === '현장입찰')).toBe(false)
+
+    const limited = buildInsights(item({ bid_method: '제한경쟁', bid_div: '현장입찰' }))
+    expect(limited.find((i) => i.label === '제한경쟁 물건')?.emphasis).toBe(true)
+    expect(limited.find((i) => i.label === '현장입찰')?.emphasis).toBe(true)
+  })
+})

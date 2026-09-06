@@ -43,6 +43,16 @@ export interface Insight {
 /** 취득세율(%). 2026년 기준, 지방교육세·농특세는 별도라 개산치임을 명시한다. */
 const ACQUISITION_TAX = { housing: 1.1, other: 4.6 }
 
+/**
+ * "2026/09/14" 같은 온비드 날짜 문자열이 이미 지났는지.
+ * 형식이 다르거나 파싱이 안 되면 false로 둔다 — 모르는 것을 "지났다"고
+ * 단정하면 배분요구 확정 여부를 잘못 알려주게 된다.
+ */
+const isPastDate = (raw: string): boolean => {
+  const t = Date.parse(raw.replace(/\//g, '-'))
+  return Number.isFinite(t) && t < Date.now()
+}
+
 const won = (n: number): string => {
   if (n >= 100_000_000) {
     const eok = Math.floor(n / 100_000_000)
@@ -66,6 +76,28 @@ export function buildInsights(
   const sqm = item.area > 0 ? item.area : item.land_area
   const pyeong = sqm > 0 ? toPyeong(sqm) : 0
   const priced = item.min_bid_price > 0 && !item.min_bid_undisclosed
+  /**
+   * 매각이 아니라 임대로 나온 물건(실측 2,705건).
+   * 감정가·최저입찰가가 매매가가 아니라 임대료라, 취득세나 매매 시세 비교를
+   * 그대로 얹으면 숫자가 통째로 거짓이 된다.
+   */
+  const rental = item.disposal === '임대'
+
+  // ── 이 물건이 매각인지 임대인지부터 ─────────────────────
+  // 실측 69,753건 중 2,705건이 임대다. 목록에서는 매각 물건과 나란히 보이는데
+  // 감정가·최저입찰가의 뜻이 아예 달라(매매가가 아니라 임대료), 모르고 보면
+  // "평당 41만원 아파트"처럼 읽힌다. 실제로 그렇게 나왔다.
+  if (rental) {
+    out.push({
+      kind: 'warning',
+      label: '매각이 아니라 임대 물건',
+      basis:
+        '소유권을 사는 것이 아니라 사용권을 빌리는 입찰이다. 표시된 감정가와 ' +
+        '최저입찰가는 매매가가 아니라 임대료이므로, 매매 시세 비교나 취득세 ' +
+        '계산을 적용하지 않았다. 임대 기간·갱신 조건·원상복구 의무는 공고문에서 확인해야 한다.',
+      emphasis: true,
+    })
+  }
 
   // ── 지표 1: 체감률과 남은 하락 여지 ──────────────────────
   if (item.discount_rate !== null && item.fail_count > 0) {
@@ -82,7 +114,7 @@ export function buildInsights(
     ? (item.property_type as PropertyType)
     : null
   const own = cmp ? marketStats?.per_property?.[cmp] : undefined
-  if (cmp && own && own.count >= MIN_SAMPLE && own.median_per_pyeong > 0 && pyeong > 0 && priced) {
+  if (!rental && cmp && own && own.count >= MIN_SAMPLE && own.median_per_pyeong > 0 && pyeong > 0 && priced) {
     const perPyeong = Math.round(item.min_bid_price / pyeong)
     const diff = Math.round(((perPyeong - own.median_per_pyeong) / own.median_per_pyeong) * 100)
     out.push({
@@ -95,13 +127,13 @@ export function buildInsights(
         `층·향·연식·권리관계는 반영되지 않은 단순 비교다.`,
       emphasis: diff < -20,
     })
-  } else if (cmp && priced && pyeong > 0) {
+  } else if (!rental && cmp && priced && pyeong > 0) {
     out.push({
       kind: 'unknown',
       label: '시세 비교 불가',
       basis: `같은 시군구 ${PROPERTY_LABELS[cmp]} 실거래 표본이 ${MIN_SAMPLE}건 미만이라 비교 기준을 만들 수 없다.`,
     })
-  } else if (priced && pyeong > 0) {
+  } else if (!rental && priced && pyeong > 0) {
     out.push({
       kind: 'unknown',
       label: '시세 비교 불가',
@@ -112,7 +144,8 @@ export function buildInsights(
   }
 
   // ── 지표 3: 취득 부대비용 개산 ───────────────────────────
-  if (priced) {
+  // 임대 물건에는 취득세가 없다. 임대료에 취득세율을 곱한 값은 아무 뜻이 없다.
+  if (priced && !rental) {
     const housing = item.use_mcls === '주거용건물'
     const rate = housing ? ACQUISITION_TAX.housing : ACQUISITION_TAX.other
     const tax = Math.round(item.min_bid_price * (rate / 100))
@@ -179,6 +212,76 @@ export function buildInsights(
       basis:
         `감정가의 ${item.discount_rate}%까지 떨어졌다. 유찰이 반복되는 물건은 ` +
         '권리관계·명도·물건 자체에 시장이 기피하는 이유가 있는 경우가 많다.',
+      emphasis: true,
+    })
+  }
+
+  // ── 배분요구종기일 ───────────────────────────────────────
+  // 경공매 서비스들이 권리분석에서 가장 먼저 짚는 날짜다. 임차인이 이 날까지
+  // 배분요구를 했는지에 따라 보증금이 배분으로 소멸하는지, 낙찰자가 인수하는지가
+  // 갈린다(국세징수법상 공매의 배분요구 종기). 우리 데이터에 이 날짜는 있지만
+  // "누가 배분요구를 했는가"는 없다 — 날짜만 짚고 판정은 하지 않는다.
+  if (item.distribution_deadline) {
+    const past = isPastDate(item.distribution_deadline)
+    out.push({
+      kind: 'unknown',
+      label: `배분요구종기일 ${item.distribution_deadline}`,
+      basis:
+        (past
+          ? '이미 지났다. 배분요구 여부가 확정됐으므로 공매재산명세서의 ' +
+            '"배분요구 및 채권신고 현황"에서 임차인이 배분요구를 했는지 확인할 수 있다. '
+          : '아직 지나지 않았다. 배분요구 현황이 확정되지 않아 인수 여부를 지금 판단할 수 없다. ') +
+        '대항력 있는 임차인(전입신고가 말소기준권리보다 빠른 경우)이 배분요구를 하지 않았거나 ' +
+        '배분에서 보증금을 다 못 받으면, 그 차액을 낙찰자가 떠안는다. 낙찰가 외에 ' +
+        '수천만 원이 더 드는 가장 흔한 경로다.',
+      emphasis: !past,
+    })
+  }
+
+  // ── 재산유형에 따라 권리분석의 근거 법령이 다르다 ────────
+  // 압류재산은 국세징수법에 따른 체납처분 절차라 등기상 권리의 소멸·인수가
+  // 법으로 정해지지만, 신탁·기타일반재산은 공고문의 인수조건이 곧 계약조건이다.
+  // 같은 "공매"로 묶여 보이지만 확인해야 할 문서가 다르다.
+  if (item.prpt_div === '압류재산') {
+    out.push({
+      kind: 'unknown',
+      label: '압류재산 — 국세징수법 절차',
+      basis:
+        '세금 체납으로 압류된 재산을 캠코가 대행 매각하는 건이다. 말소기준권리보다 ' +
+        '뒤에 설정된 권리는 소멸하고 앞선 권리는 인수한다 — 판단 근거는 등기부등본과 ' +
+        '공매재산명세서다. 법원경매와 달리 인도명령이 없어 명도는 협의 또는 소송으로만 된다.',
+    })
+  } else if (item.prpt_div === '기타일반재산') {
+    out.push({
+      kind: 'unknown',
+      label: '신탁·기타일반재산 — 공고문이 계약조건',
+      basis:
+        '신탁회사나 금융기관이 담보물을 처분하는 건이 대부분이다. 압류재산과 달리 ' +
+        '국세징수법의 소멸·인수 규칙이 그대로 적용되지 않고, 공고문에 적힌 인수조건이 ' +
+        '곧 계약조건이 된다. 임차인·유치권 인수 여부를 반드시 공고문 원문에서 확인해야 한다.',
+    })
+  }
+
+  // ── 드문 입찰 조건은 그 자체가 제약이다 ──────────────────
+  // 실측 69,753건 중 일반경쟁 53,570 / 제한경쟁 3 / 지명경쟁 2,
+  // 전자입찰 53,563 / 현장입찰 12. 드물기 때문에 모르고 갔다가 못 넣는다.
+  if (item.bid_method && item.bid_method !== '일반경쟁') {
+    out.push({
+      kind: 'warning',
+      label: `${item.bid_method} 물건`,
+      basis:
+        '누구나 입찰할 수 있는 물건이 아니다. 공고문이 정한 자격(지역·업종·자격증 등)을 ' +
+        '갖춰야 하며, 자격 없이 넣은 입찰은 무효 처리된다.',
+      emphasis: true,
+    })
+  }
+  if (item.bid_div === '현장입찰') {
+    out.push({
+      kind: 'warning',
+      label: '현장입찰',
+      basis:
+        '온비드 전자입찰이 아니라 지정된 장소에 직접 가서 입찰해야 한다. ' +
+        '시간과 지참 서류를 공고문에서 확인해야 하며, 온라인으로는 참여할 수 없다.',
       emphasis: true,
     })
   }

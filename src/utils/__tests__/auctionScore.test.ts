@@ -196,3 +196,63 @@ describe('빠른 경로와 근거 경로의 일치', () => {
     expect(scoreTotal(it_)).toBe(scoreAuction(it_).total)
   })
 })
+
+describe('잴 수 있었던 배점으로 환산', () => {
+  // 시세축 30점을 받을 수 있는 물건은 전체의 10.1%뿐이다(실측 69,753건 중 7,036건).
+  // 단순 합산이면 나머지 89.9%가 물건이 나빠서가 아니라 우리가 못 재서 50점에
+  // 묶여, 순위가 아파트·오피스텔로 쏠린다. 그건 추천이 아니라 측정 편향이다.
+  const same = { discount_rate: 60, fail_count: 2, min_bid_price: 300_000_000 }
+
+  it('시세축을 못 받는 종목이 그 이유만으로 밀리지 않는다', () => {
+    const apt = scoreAuction(item({ ...same, property_type: 'APARTMENT' }), market)
+    const land = scoreAuction(
+      item({ ...same, property_type: 'LAND', area: 0, land_area: 500 }),
+      market
+    )
+    // 토지는 시세축이 없지만, 잴 수 있었던 50점 기준으로 환산돼 비슷한 수준에 선다.
+    expect(land.attainable).toBe(WEIGHTS.discount + WEIGHTS.failCount)
+    expect(apt.attainable).toBe(WEIGHTS.discount + WEIGHTS.market + WEIGHTS.failCount)
+    expect(land.total).toBeGreaterThan(40)
+  })
+
+  it('총점은 0~100 안에 있다', () => {
+    for (const rate of [1, 20, 30, 60, 100, 150]) {
+      for (const fc of [0, 3, 20]) {
+        const t = scoreAuction(item({ discount_rate: rate, fail_count: fc }), market).total
+        expect(t).toBeGreaterThanOrEqual(0)
+        expect(t).toBeLessThanOrEqual(100)
+        expect(Number.isFinite(t)).toBe(true)
+      }
+    }
+  })
+
+  it('환산 뒤에도 두 경로가 일치한다', () => {
+    for (const p of [
+      { property_type: 'LAND' as const, area: 0, land_area: 300 },
+      { property_type: 'APARTMENT' as const },
+      { discount_rate: 15 },
+      { fail_count: 9, share_deal: true },
+    ]) {
+      const it_ = item(p)
+      expect(scoreTotal(it_, market)).toBe(scoreAuction(it_, market).total)
+    }
+  })
+})
+
+describe('임대 물건', () => {
+  const rent = item({ disposal: '임대', property_type: 'APARTMENT', area: 59.69,
+    appraisal_price: 8_300_000, min_bid_price: 7_470_000, discount_rate: 90 })
+
+  it('점수를 매기지 않는다 — 매매 기준 체계가 통하지 않는다', () => {
+    const s = scoreAuction(rent, market)
+    expect(s.scorable).toBe(false)
+    expect(s.axes).toHaveLength(0)
+    expect(s.caveats[0]).toContain('임대')
+  })
+
+  it('정렬에서도 빠진다', () => {
+    expect(scoreTotal(rent, market)).toBeNull()
+    expect(rankAuctions([rent, item({ id: 'sale', disposal: '매각' })], market)
+      .map((r) => r.item.id)).toEqual(['sale'])
+  })
+})
