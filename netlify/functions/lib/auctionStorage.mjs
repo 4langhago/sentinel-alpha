@@ -334,13 +334,26 @@ export async function readAuctionShard(key, { requireExists = false } = {}) {
   }
   // 로컬 파일 폴백은 키가 사용자 입력에서 왔을 수 있으므로 반드시 검증한다.
   if (!isSafeShardKey(key)) return null
+  let raw
   try {
     const { readFile } = await import('node:fs/promises')
     const { fileURLToPath } = await import('node:url')
     const path = fileURLToPath(new URL(`../data/${key}`, import.meta.url))
-    return JSON.parse(await readFile(path, 'utf8'))
+    raw = await readFile(path, 'utf8')
   } catch {
+    // 파일이 없는 것은 정상이다(해당 샤드를 아직 안 만들었을 수 있다).
     return null
+  }
+  try {
+    return JSON.parse(raw)
+  } catch (e) {
+    // 파싱 실패는 "없음"이 아니다. 조용히 null을 돌려주면 그 샤드에만 있던
+    // 물건이 소리 없이 사라진다 — 2026-09-06에 orphan.json이 뒤에 잔해가
+    // 붙은 채 발견됐을 때 실제로 이 경로로 10,876건이 없는 것처럼 처리됐다.
+    // 시끄럽게 실패해야 유실 대신 오류로 드러난다.
+    throw new Error(
+      `공매 샤드가 손상됐습니다(${key}): ${e.message} · 길이 ${raw.length.toLocaleString()}자`
+    )
   }
 }
 

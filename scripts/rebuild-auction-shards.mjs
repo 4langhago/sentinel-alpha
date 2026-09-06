@@ -10,6 +10,7 @@
 //
 // 반영: npm run blobs:upload -- auctions
 import { readFileSync, readdirSync, writeFileSync, mkdirSync, existsSync } from 'node:fs'
+import { writeJsonAtomic } from './lib/writeShard.mjs'
 import { resolve, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { buildAuctionShards } from '../netlify/functions/lib/auctionStorage.mjs'
@@ -76,8 +77,7 @@ if (dry) {
 
 for (const s of shards) {
   const path = join(ROOT, 'netlify/functions/data', s.key + '')
-  mkdirSync(dirname(path), { recursive: true })
-  writeFileSync(path, JSON.stringify(s.value), 'utf8')
+  writeJsonAtomic(path, s.value)
 }
 
 console.log(`\n샤드 ${shards.length}개 저장.`)

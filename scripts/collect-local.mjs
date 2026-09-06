@@ -12,6 +12,7 @@
 // 결과는 netlify/functions/data/ 아래에 조회용 샤드로 저장되고,
 // 로컬 개발 서버(dev-api)가 이 파일들을 Blobs 대신 사용한다.
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs'
+import { writeJsonAtomic } from './lib/writeShard.mjs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { collectTrades } from '../netlify/functions/lib/collect.mjs'
@@ -86,10 +87,8 @@ const saveShards = async (payload, { force = false, isRebuildCall = false } = {}
   let bytes = 0
   for (const { key, value } of shards) {
     const path = resolve(outDir, key)
-    mkdirSync(dirname(path), { recursive: true })
-    const body = JSON.stringify(value)
-    writeFileSync(path, body, 'utf8')
-    bytes += Buffer.byteLength(body)
+    writeJsonAtomic(path, value)
+    bytes += Buffer.byteLength(JSON.stringify(value))
   }
   console.log(
     `\n저장 완료: ${outDir}\n  샤드 ${shards.length}개 · 총 ${(bytes / 1024 / 1024).toFixed(1)}MB`

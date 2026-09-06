@@ -10,6 +10,7 @@
 //
 // 교정 후 npm run blobs:upload -- auctions 로 운영에 반영한다.
 import { readFileSync, readdirSync, writeFileSync, mkdirSync, existsSync } from 'node:fs'
+import { writeJsonAtomic } from './lib/writeShard.mjs'
 import { resolve, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { buildAuctionShards } from '../netlify/functions/lib/auctionStorage.mjs'
@@ -86,8 +87,7 @@ const shards = buildAuctionShards({
 
 for (const s of shards) {
   const path = join(ROOT, 'netlify/functions/data', s.key + '')
-  mkdirSync(dirname(path), { recursive: true })
-  writeFileSync(path, JSON.stringify(s.value), 'utf8')
+  writeJsonAtomic(path, s.value)
 }
 
 console.log(`\n${fixed.toLocaleString()}건 교정, 샤드 ${shards.length}개 저장.`)
