@@ -182,3 +182,38 @@ describe('권리분석 참고 항목', () => {
     expect(limited.find((i) => i.label === '현장입찰')?.emphasis).toBe(true)
   })
 })
+
+describe('저가 경고는 관측된 사실만 말한다', () => {
+  // 한때 "유찰 N회면 통상 감정가의 0.9^N% 수준"이라는 모델로 경고를 만들려
+  // 했다가 버렸다. 압류재산 유찰 0회 50,834건 중 최저가가 감정가의 95% 이상인
+  // 것은 10.5%뿐이라 전제가 성립하지 않았고, 그 모델이면 74%의 물건에 경고가
+  // 붙었다. 경고가 그렇게 흔하면 아무도 읽지 않는다.
+  const warn = (o: Partial<AuctionItem>) =>
+    buildInsights(item({ min_bid_price: 50_000_000, ...o })).find(
+      (i) => i.label === '지나치게 낮은 최저가'
+    )
+
+  it('유찰 0회면 유찰을 원인으로 말하지 않는다', () => {
+    const got = warn({ discount_rate: 15, fail_count: 0 })
+    expect(got?.basis).toContain('유찰 없이 1회차부터')
+    expect(got?.basis).not.toContain('유찰이 반복')
+  })
+
+  it('유찰이 있으면 횟수를 함께 적는다', () => {
+    expect(warn({ discount_rate: 15, fail_count: 6 })?.basis).toContain('6회 유찰을 거쳐')
+  })
+
+  it('30% 이상이면 경고하지 않는다 — 점수 꼭대기와 같은 경계', () => {
+    expect(warn({ discount_rate: 30, fail_count: 3 })).toBeUndefined()
+    expect(warn({ discount_rate: 29, fail_count: 3 })).toBeDefined()
+  })
+
+  it('저감 규칙을 단정하지 않는다', () => {
+    // "유찰 1회당 10% 저감"은 우리 데이터와 맞지 않아 지웠다.
+    const drop = buildInsights(item({ discount_rate: 70, fail_count: 3 })).find(
+      (i) => i.label === '누적 하락'
+    )
+    expect(drop?.basis).not.toContain('10%씩')
+    expect(drop?.basis).toContain('공고문에서 확인')
+  })
+})

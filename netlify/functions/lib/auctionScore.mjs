@@ -86,8 +86,30 @@ const UNEXPLAINED_BELOW = 20
 /** 시세 축의 0~1 비율. 중위값과 같으면 0, 40% 이상 싸면 1. */
 const marketRatio = (perPyeong, median) => clamp01(-((perPyeong - median) / median) / 0.4)
 
-/** 유찰 축의 0~1 비율. 5회에서 묶는다. */
-const failRatio = (n) => clamp01(n / 5)
+/**
+ * 유찰 축의 0~1 비율. 2~5회가 꼭대기이고 그 뒤로는 내려간다.
+ *
+ * 체감률 축과 같은 이유로 꺾었다. 인사이트는 유찰이 반복되는 물건을
+ * "시장이 기피하는 이유가 있다"고 경고하는데, 점수는 유찰이 많을수록
+ * 만점을 주고 있었다. 실측 2,384건이 한 카드에서 "유찰 누적 10/10"과
+ * 그 경고를 동시에 보여줬다.
+ *
+ * 1회는 아직 신호가 약하고, 2~5회는 값이 실제로 내려간 구간이며,
+ * 그 이상은 아무도 사지 않는 이유가 있다는 쪽에 가깝다(15회 이상도 흔하다).
+ */
+const FAIL_PEAK_LO = 2
+const FAIL_PEAK_HI = 5
+const FAIL_FLOOR = 0.3
+
+const failRatio = (n) => {
+  if (n <= 0) return 0
+  if (n < FAIL_PEAK_LO) return n / FAIL_PEAK_LO
+  if (n <= FAIL_PEAK_HI) return 1
+  // 꼭대기를 넘으면 15회에서 바닥에 닿도록 완만히 내리되, 바닥 아래로는
+  // 가지 않는다. clamp01만 걸면 20회에서 0이 되는데, 그건 "확인할 가치도
+  // 없다"는 뜻이라 우리가 데이터로 아는 것보다 센 주장이다.
+  return Math.max(FAIL_FLOOR, 1 - ((1 - FAIL_FLOOR) * (n - FAIL_PEAK_HI)) / 10)
+}
 
 /** 감점 항목. 낙찰 뒤 실제로 돈과 시간이 더 드는 것이 확인되는 조건만. */
 function penaltyOf(item) {
@@ -132,6 +154,13 @@ const isRental = (item) => item.disposal === '임대'
 function comparable(item, marketStats) {
   // 임대료를 매매 실거래 중위값과 비교하는 것은 단위가 다른 두 값을 나누는 것이다.
   if (isRental(item)) return null
+  // 감정가의 20% 아래로 떨어진 물건은 평당가도 그만큼 낮게 나온다. 같은 결함
+  // 하나를 체감률과 시세 두 축에서 각각 보상하면 이중 계산이다. 실측 385건이
+  // 이 경로로 시세축 만점을 받았고, 최악은 감정가의 1%인 서울 금천구
+  // 아파트가 "평당 9만원 · 시세 대비 -99% · 시세축 30/30"이었다.
+  // 싼 이유를 모르는 채로 "시세보다 99% 싸다"고 말하면 안 된다.
+  const rate = item.discount_rate
+  if (rate !== null && rate !== undefined && rate < UNEXPLAINED_BELOW) return null
   const type = COMPARABLE.has(item.property_type) ? item.property_type : null
   if (!type) return null
   const own = marketStats?.per_property?.[type]
@@ -257,6 +286,18 @@ export function scoreAuction(item, marketStats) {
         `같으면 0점, 40% 이상 싸면 만점으로 환산해 ${points}점. ` +
         '층·향·연식·권리관계는 반영되지 않은 단순 비교다.',
     })
+  } else if (
+    priced &&
+    item.discount_rate !== null &&
+    item.discount_rate !== undefined &&
+    item.discount_rate < UNEXPLAINED_BELOW &&
+    COMPARABLE.has(item.property_type)
+  ) {
+    caveats.push(
+      `감정가의 ${item.discount_rate}%까지 떨어진 물건이라 시세 비교를 하지 않았다. ` +
+        '평당가가 낮은 것은 이 물건이 저평가돼서가 아니라 값이 그만큼 내려간 결과이고, ' +
+        '같은 사실을 두 번 점수로 쳐줄 수 없다. 싼 이유는 공고문에서 확인해야 한다.'
+    )
   } else if (!COMPARABLE.has(item.property_type)) {
     caveats.push(
       '토지·상가는 개별 요인(용도지역·맹지·상권·공실)이 가격을 좌우해 ' +
@@ -275,9 +316,9 @@ export function scoreAuction(item, marketStats) {
       points,
       max: WEIGHTS.failCount,
       basis:
-        `${item.fail_count}회 유찰. 5회를 만점으로 환산해 ${points}점. ` +
-        '유찰이 많다는 것은 더 싸질 여지인 동시에 시장이 사지 않는 이유가 ' +
-        '있다는 신호이기도 해 배점을 작게 뒀다.',
+        `${item.fail_count}회 유찰. ${FAIL_PEAK_LO}~${FAIL_PEAK_HI}회를 만점으로 보고 ${points}점. ` +
+        `${FAIL_PEAK_HI}회를 넘으면 점수가 다시 내려간다 — 유찰이 쌓일수록 더 싸질 여지이기도 ` +
+        '하지만, 그만큼 시장이 사지 않는 이유가 있다는 신호에 가까워진다.',
     })
   }
 

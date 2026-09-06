@@ -115,12 +115,36 @@ describe('단조성', () => {
     expect(axis(300_000_000)).toBeGreaterThan(axis(500_000_000))
   })
 
-  it('유찰이 많을수록 점수가 높지만 5회에서 묶인다', () => {
+  it('유찰 점수는 2~5회가 꼭대기이고 그 뒤로 내려간다', () => {
+    // 체감률과 같은 이유로 꺾었다. 점수가 유찰 많은 물건에 만점을 주면서
+    // 카드의 경고가 유찰을 위험 신호라고 말하면 서로 어긋난다.
     const at = (n: number) =>
       scoreAuction(item({ fail_count: n })).axes.find((a) => a.key === 'failCount')?.points ?? 0
-    expect(at(3)).toBeGreaterThan(at(1))
-    expect(at(10)).toBe(at(5))
+    expect(at(0)).toBe(0)
+    expect(at(1)).toBeLessThan(at(2))
+    expect(at(2)).toBe(WEIGHTS.failCount)
     expect(at(5)).toBe(WEIGHTS.failCount)
+    // 꼭대기를 넘으면 내려간다 — 15회 유찰은 기회보다 신호에 가깝다.
+    expect(at(10)).toBeLessThan(at(5))
+    expect(at(20)).toBeLessThan(at(10))
+    // 다만 0으로 떨어뜨리지는 않는다.
+    expect(at(20)).toBeGreaterThan(0)
+  })
+
+  it('헐값 구간에서는 시세축을 주지 않는다 — 이중 계산 방지', () => {
+    // 감정가의 1%인 서울 금천구 아파트가 "평당 9만원 · 시세 대비 -99% ·
+    // 시세축 30/30"을 받고 있었다(실측 385건). 평당가가 낮은 것은 저평가가
+    // 아니라 값이 그만큼 내려간 결과라, 같은 사실을 두 번 쳐줄 수 없다.
+    const deep = scoreAuction(
+      item({ discount_rate: 5, min_bid_price: 5_000_000, property_type: 'APARTMENT' }),
+      market
+    )
+    expect(deep.axes.some((a) => a.key === 'market')).toBe(false)
+    expect(deep.caveats.some((c) => c.includes('시세 비교를 하지 않았다'))).toBe(true)
+
+    // 정상 구간에서는 그대로 준다.
+    const normal = scoreAuction(item({ discount_rate: 60, property_type: 'APARTMENT' }), market)
+    expect(normal.axes.some((a) => a.key === 'market')).toBe(true)
   })
 })
 
