@@ -5,7 +5,7 @@
 // 배점 합계, 단조성(싸질수록 점수가 오른다), 감점 방향, 그리고
 // "잴 수 없는 물건"이 순위에 섞이지 않는다는 것.
 import { describe, it, expect } from 'vitest'
-import { scoreAuction, rankAuctions, WEIGHTS } from '../auctionScore'
+import { scoreAuction, scoreTotal, rankAuctions, WEIGHTS } from '../auctionScore'
 import type { AuctionItem } from '../../types/auction'
 
 function item(overrides: Partial<AuctionItem> = {}): AuctionItem {
@@ -142,5 +142,37 @@ describe('근거 노출', () => {
   it('낙찰가 이력이 없다는 한계를 항상 밝힌다', () => {
     const s = scoreAuction(item())
     expect(s.caveats.some((c) => c.includes('낙찰가 이력'))).toBe(true)
+  })
+})
+
+describe('빠른 경로와 근거 경로의 일치', () => {
+  // 서버는 정렬할 때 근거 문장을 만들지 않는 scoreTotal을, 카드는 근거가 붙은
+  // scoreAuction을 쓴다. 둘이 어긋나면 목록 순서와 카드에 찍힌 점수가 달라져
+  // 사용자가 둘 중 무엇도 믿을 수 없게 된다. 이 테스트가 그 계약이다.
+  const cases: Array<[string, Partial<AuctionItem>]> = [
+    ['기본', {}],
+    ['많이 싸고 많이 유찰', { discount_rate: 45, fail_count: 7 }],
+    ['감점 겹침', { share_deal: true, eviction_responsibility: '낙찰자' }],
+    ['시세보다 쌈', { min_bid_price: 300_000_000 }],
+    ['시세보다 비쌈', { min_bid_price: 900_000_000 }],
+    ['비교 불가 종목', { property_type: 'LAND' }],
+    ['면적 없음', { area: 0, land_area: 0 }],
+  ]
+
+  it.each(cases)('%s — 두 경로가 같은 값을 낸다', (_label, patch) => {
+    const it_ = item(patch)
+    const full = scoreAuction(it_, market)
+    expect(scoreTotal(it_, market)).toBe(full.total)
+  })
+
+  it('잴 수 없는 물건은 빠른 경로가 null을 낸다', () => {
+    const it_ = item({ min_bid_undisclosed: true, min_bid_price: 0, discount_rate: null })
+    expect(scoreAuction(it_, market).scorable).toBe(false)
+    expect(scoreTotal(it_, market)).toBeNull()
+  })
+
+  it('시세 통계가 없어도 두 경로가 같다', () => {
+    const it_ = item({ discount_rate: 55, fail_count: 3 })
+    expect(scoreTotal(it_)).toBe(scoreAuction(it_).total)
   })
 })

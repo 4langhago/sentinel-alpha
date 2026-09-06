@@ -3,7 +3,6 @@ import { useSearchParams } from 'react-router-dom'
 import { SearchX, ChevronLeft, ChevronRight, AlertTriangle, Gavel, FlaskConical, Database } from 'lucide-react'
 import AuctionFilters from '../components/AuctionFilters'
 import AuctionCard from '../components/AuctionCard'
-import { rankAuctions } from '../utils/auctionScore'
 import { auctionApi } from '../services/auctionApi'
 import { tradeApi } from '../services/tradeApi'
 import { AuctionSearchParams, AuctionSearchResult, AuctionStats } from '../types/auction'
@@ -149,24 +148,10 @@ const AuctionPage = () => {
   }, [soleSgg])
 
   const isLive = result?.isLive ?? false
-  const rawItems = useMemo(() => result?.items || [], [result])
-
-  /**
-   * 추천 점수순 보기.
-   *
-   * 서버가 아니라 **현재 페이지 안에서만** 다시 세운다. 점수는 같은 시군구
-   * 실거래 통계가 있어야 계산되는데 그 통계는 지역을 좁혔을 때만 받아오므로,
-   * 전체 결과에 점수를 매겨 서버에서 줄세우는 것은 지금 구조로는 불가능하다.
-   * 페이지 안 정렬이라는 사실을 화면에도 그대로 적는다 — "전체 1위"로
-   * 읽히면 거짓말이 된다.
-   */
-  const [byScore, setByScore] = useState(false)
-  const ranked = useMemo(
-    () => rankAuctions(rawItems, marketStats ?? undefined),
-    [rawItems, marketStats]
-  )
-  const items = byScore ? ranked.map((r) => r.item) : rawItems
-  const unscorable = rawItems.length - ranked.length
+  const items = result?.items || []
+  // 추천 점수순은 서버가 전체 결과를 대상으로 세운다(api.mjs의 sorters.score).
+  // 시세 비교에 쓰는 시군구 실거래 통계를 서버가 이미 들고 있기 때문이다.
+  const byScore = filters.sort === 'score'
   const page = filters.page || 1
   const totalPages = result?.totalPages || 1
 
@@ -261,27 +246,11 @@ const AuctionPage = () => {
         <p className="text-sm text-gray-600 dark:text-gray-300">
           {loading ? '불러오는 중...' : `${(result?.total || 0).toLocaleString()}건`}
         </p>
-        {rawItems.length > 1 && (
-          <button
-            onClick={() => setByScore((v) => !v)}
-            aria-pressed={byScore}
-            className={`inline-flex items-center gap-1 rounded-full px-3 py-1.5 min-h-[32px] text-xs font-semibold border ${
-              byScore
-                ? 'bg-violet-600 text-white border-violet-600'
-                : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300'
-            }`}
-          >
-            추천 점수순
-            {byScore && unscorable > 0 && (
-              <span className="font-normal opacity-80">· 산정불가 {unscorable}건 제외</span>
-            )}
-          </button>
-        )}
         {byScore && (
           <p className="w-full text-[11px] text-gray-400 dark:text-gray-500">
-            이 페이지에 불러온 {rawItems.length}건 안에서만 다시 세운 순서입니다. 전체 순위가
-            아닙니다. 최저가나 감정가가 없어 점수를 매길 수 없는 물건은 낮은 점수가 아니라
-            목록에서 빠집니다.
+            검색 결과 전체를 점수순으로 세운 순서입니다. 최저가가 비공개거나 감정가가 없어
+            점수를 매길 수 없는 물건은 낮은 점수로 섞지 않고 뒤로 보냈습니다. 점수 근거는
+            각 카드에서 펼쳐 볼 수 있습니다.
           </p>
         )}
         {result?.scopeTruncated && (

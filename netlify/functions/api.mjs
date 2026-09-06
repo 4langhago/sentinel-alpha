@@ -7,6 +7,7 @@ import { generateTrades } from './lib/mockTrades.mjs'
 import { ALL_SGG, REGIONS } from './lib/regionCodes.mjs'
 import { readIndex, readShard, computeStats, TYPE_SHARD_TYPES, COMPLEX_TYPES } from './lib/storage.mjs'
 import { generateAuctions } from './lib/mockAuctions.mjs'
+import { scoreTotal } from './lib/auctionScore.mjs'
 import {
   readAuctionIndex,
   readAuctionShard,
@@ -472,8 +473,38 @@ export default async (req) => {
       if (a.min_bid_undisclosed !== b.min_bid_undisclosed) return a.min_bid_undisclosed ? 1 : -1
       return dir * (a.min_bid_price - b.min_bid_price)
     }
+    /**
+     * 추천 점수순.
+     *
+     * 시세 비교에 필요한 시군구 실거래 통계는 이 요청이 이미 읽은 실거래
+     * 인덱스(index.sgg)에 전부 들어 있다. 화면 쪽이 한 시군구를 고를 때만
+     * 통계를 받아오느라 페이지 안에서만 줄을 세울 수 있었을 뿐, 서버는
+     * 처음부터 전체를 세울 수 있었다.
+     *
+     * 점수를 못 매기는 물건(최저가 비공개·감정가 없음)은 0점으로 섞지 않고
+     * 뒤로 민다. "잴 수 없음"과 "나쁨"은 다르고, 섞으면 순위가 거짓말이 된다.
+     * 근거 문장을 만들지 않는 scoreTotal을 쓰는 이유는 큰 시도가 한 요청에
+     * 2만 건 가까이 훑기 때문이다 — 읽지도 않을 문장을 수만 개 만들 이유가 없다.
+     */
+    const scoreCache = new Map()
+    const scoreOf = (it) => {
+      if (scoreCache.has(it.id)) return scoreCache.get(it.id)
+      const v = scoreTotal(it, it.sgg_code ? index?.sgg?.[it.sgg_code] : undefined)
+      scoreCache.set(it.id, v)
+      return v
+    }
+
     const sorters = {
       deadline: (a, b) => (a.bid_end_at || far).localeCompare(b.bid_end_at || far),
+      score: (a, b) => {
+        const sa = scoreOf(a)
+        const sb = scoreOf(b)
+        if (sa === null || sb === null) {
+          if (sa === sb) return (a.bid_end_at || far).localeCompare(b.bid_end_at || far)
+          return sa === null ? 1 : -1
+        }
+        return sb - sa || (a.bid_end_at || far).localeCompare(b.bid_end_at || far)
+      },
       price_asc: byPrice(1),
       price_desc: byPrice(-1),
       discount_asc: (a, b) => (a.discount_rate ?? 999) - (b.discount_rate ?? 999),

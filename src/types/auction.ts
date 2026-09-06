@@ -154,6 +154,7 @@ export interface AuctionStats {
 
 export type AuctionSort =
   | 'deadline'
+  | 'score'
   | 'price_asc'
   | 'price_desc'
   | 'discount_asc'
@@ -163,6 +164,7 @@ export type AuctionSort =
 
 export const AUCTION_SORT_LABELS: Record<AuctionSort, string> = {
   deadline: '마감임박순',
+  score: '추천 점수순',
   discount_asc: '체감률 낮은순',
   price_asc: '최저가 낮은순',
   price_desc: '최저가 높은순',
