@@ -99,6 +99,9 @@ const HomePage = () => {
               <span className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse" />
               <span className="text-white/80 text-sm font-semibold">
                 {sido} 최근 거래 <span className="text-emerald-400 font-bold">{total.toLocaleString()}건</span>
+                {/* 아래 '시세 요약'의 매매 건수와 숫자가 다른 이유를 툴팁(모바일에서 안 보임)이
+                    아니라 화면 문구로 밝힌다. */}
+                <span className="text-white/50 font-medium"> · 매매+전월세</span>
               </span>
             </div>
 
@@ -236,6 +239,14 @@ const HomePage = () => {
             매매 실거래 전체 집계 기준
             <Info className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500" />
           </p>
+          {/* 위 히어로의 '최근 거래 N건'은 전월세까지 센 숫자라 이 요약의 매매 건수와 다르다.
+              툴팁은 모바일에서 보이지 않으므로 두 숫자가 다를 때는 이유를 화면에 적는다. */}
+          {!statsLoading && stats && stats.count > 0 && total !== stats.count && (
+            <p className="text-xs text-slate-400 dark:text-slate-500 -mt-5 mb-6">
+              상단의 {total.toLocaleString()}건은 전월세를 포함한 숫자이고, 이 요약은 매매{' '}
+              {stats.count.toLocaleString()}건만 집계합니다.
+            </p>
+          )}
 
           {statsLoading ? (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
