@@ -25,7 +25,7 @@ const HomePage = () => {
     () => ({ sido, propertyType, sort: 'recent' as const, limit: 6 }),
     [sido, propertyType]
   )
-  const { items, total, isLive, lastUpdate, fetchedAt, loading, error, refresh } = useTrades(params)
+  const { items, total, scopeTruncated, isLive, lastUpdate, fetchedAt, loading, error, refresh } = useTrades(params)
 
   // 히어로에 올릴 "신뢰되는 숫자" 하나: 완결된 월 기준 증감률.
   // 당월(집계 중)은 표본이 적어 튈 수 있으므로 제외한다 (PriceTrendChart와 동일 규칙).
@@ -99,6 +99,11 @@ const HomePage = () => {
               <span className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse" />
               <span className="text-white/80 text-sm font-semibold">
                 {sido} 최근 거래 <span className="text-emerald-400 font-bold">{total.toLocaleString()}건</span>
+                {/* 아래 '시세 요약'의 매매 건수와 숫자가 다른 이유를 툴팁(모바일에서 안 보임)이
+                    아니라 화면 문구로 밝힌다. */}
+                <span className="text-white/50 font-medium">
+                  {scopeTruncated ? ' · 최신 조회 범위(매매+전월세)' : ' · 매매+전월세'}
+                </span>
               </span>
             </div>
 
@@ -236,6 +241,17 @@ const HomePage = () => {
             매매 실거래 전체 집계 기준
             <Info className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500" />
           </p>
+          {/* 위 히어로의 '최근 거래 N건'은 전월세까지 센 숫자라 이 요약의 매매 건수와 다르다.
+              툴팁은 모바일에서 보이지 않으므로 두 숫자가 다를 때는 이유를 화면에 적는다. */}
+          {!statsLoading && stats && stats.count > 0 && total !== stats.count && (
+            <p className="text-xs text-slate-400 dark:text-slate-500 -mt-5 mb-6">
+              {/* total 은 시도 최신 N건(샤드 상한)까지만 센 값일 수 있다. 잘렸을 때 '전월세 포함'만
+                  이유로 들면 '전월세를 포함했는데 더 작다'는 모순 문장이 된다(QA 검수 지적). */}
+              {scopeTruncated
+                ? `상단 숫자는 최신 ${total.toLocaleString()}건까지만 조회한 범위(매매·전월세 포함)이고, 이 요약은 매매 전체 ${stats.count.toLocaleString()}건을 집계합니다.`
+                : `상단의 ${total.toLocaleString()}건은 전월세를 포함한 숫자이고, 이 요약은 매매 ${stats.count.toLocaleString()}건만 집계합니다.`}
+            </p>
+          )}
 
           {statsLoading ? (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
