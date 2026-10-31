@@ -122,7 +122,8 @@ venv/
 # OMC / tooling artifacts
 .omc/
 .playwright-mcp/
-.claude/
+.claude/*
+!.claude/skills/
 
 # 로컬 수집 실거래 데이터 (배포는 Netlify Blobs 사용)
 netlify/functions/data/

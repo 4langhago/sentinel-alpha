@@ -34,5 +34,6 @@
 - API 키 미설정 시 샘플 데이터 폴백 배지 표시 동작 유지.
 
 ## 연동 도구
+- 프로젝트 skill: `realestate-manual-deploy` (typecheck·test·build·deploy --dry 게이트, 공공 API 한도, 공개 저장소 점검)
 - `devops-infra-ops` Netlify·시크릿·예약작업, `project-manager-pm` 로드맵(`TASK_TRACKER.md`)
 - OMC `executor`, `designer`, `test-engineer`, `code-reviewer`, `security-reviewer`
